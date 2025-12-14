@@ -2,5 +2,5 @@
 - Working in /home/bjw/azerothcore; multiple repos present.
 - Treat existing uncommitted changes as part of the plan; create working branches once we start edits.
 - Need to follow superpowers skills; brainstorming required for xp-upgrade gear spec.
-- Branch `xp-upgrade-gear` with worktree at `.worktrees/xp-upgrade-gear`; base branch `Playerbot` left clean.
-- Module directories (mod-playerbots, mod-individual-progression) are missing; blocked on locating their sources before implementing plan tasks.
+- Branch `xp-upgrade-gear` active in root repo; worktree removed per request.
+- Module sources present in `modules/mod-individual-progression` and `modules/mod-playerbots`; each is its own git repo (submodule). Need to work on module branches (`xp-upgrade-gear`) before changing them.

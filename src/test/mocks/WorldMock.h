@@ -21,7 +21,9 @@
 #include "ArenaSpectator.h"
 #include "Duration.h"
 #include "IWorld.h"
+#include "Database/QueryHolder.h"
 #include "gmock/gmock.h"
+#include <optional>
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
@@ -76,6 +78,11 @@ public:
     MOCK_METHOD(LocaleConstant, GetAvailableDbcLocale, (LocaleConstant locale), (const));
     MOCK_METHOD(void, LoadDBVersion, ());
     MOCK_METHOD(char const *, GetDBVersion, (), (const));
+    char const* GetPlayerbotsDBRevision() const override
+    {
+        static std::string revision = "mock-revision";
+        return revision.c_str();
+    }
     MOCK_METHOD(void, UpdateAreaDependentAuras, ());
     MOCK_METHOD(uint32, GetCleaningFlags, (), (const));
     MOCK_METHOD(void, SetCleaningFlags, (uint32 flags), ());
@@ -84,7 +91,15 @@ public:
     MOCK_METHOD(time_t, GetNextTimeWithMonthAndHour, (int8 month, int8 hour), ());
     MOCK_METHOD(std::string const&, GetRealmName, (), (const));
     MOCK_METHOD(void, SetRealmName, (std::string name), ());
+    SQLQueryHolderCallback& AddQueryHolderCallback(SQLQueryHolderCallback&& callback) override
+    {
+        queryHolderCallback.emplace(std::move(callback));
+        return *queryHolderCallback;
+    }
     MOCK_METHOD(void, RemoveOldCorpses, ());
+
+private:
+    std::optional<SQLQueryHolderCallback> queryHolderCallback;
 };
 #pragma GCC diagnostic pop
 

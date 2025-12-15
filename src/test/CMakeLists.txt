@@ -16,6 +16,7 @@ CollectSourceFiles(
 
 include_directories(
         "mocks"
+        "${CMAKE_SOURCE_DIR}/modules"
 )
 
 add_executable(
@@ -29,6 +30,7 @@ target_link_libraries(
         gtest_main
         gmock_main
         game-interface
+        modules
 )
 
 add_test(
@@ -37,3 +39,12 @@ add_test(
         COMMAND
         ${CMAKE_BINARY_DIR}/src/test/unit_tests
 )
+
+add_test(
+        NAME
+        ProgressionHelperTests
+        COMMAND
+        ${CMAKE_BINARY_DIR}/src/test/unit_tests --gtest_filter=ProgressionHelperTest.*
+)
+
+add_custom_target(mod-individual-progression-tests DEPENDS unit_tests)

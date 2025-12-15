@@ -1383,6 +1383,8 @@ public:
         return &iter->second;
     }
 
+    [[nodiscard]] CacheVendorItemContainer const& GetVendorItemStore() const { return _cacheVendorItemStore; }
+
     void AddVendorItem(uint32 entry, uint32 item, int32 maxcount, uint32 incrtime, uint32 extendedCost, bool persist = true); // for event
     bool RemoveVendorItem(uint32 entry, uint32 item, bool persist = true); // for event
     bool IsVendorItemValid(uint32 vendor_entry, uint32 item, int32 maxcount, uint32 ptime, uint32 ExtendedCost, Player* player = nullptr, std::set<uint32>* skip_vendors = nullptr, uint32 ORnpcflag = 0) const;

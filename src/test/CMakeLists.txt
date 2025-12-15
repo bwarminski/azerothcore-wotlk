@@ -48,3 +48,19 @@ add_test(
 )
 
 add_custom_target(mod-individual-progression-tests DEPENDS unit_tests)
+
+add_test(
+        NAME
+        PlayerbotConfigTests
+        COMMAND
+        ${CMAKE_BINARY_DIR}/src/test/unit_tests --gtest_filter=PlayerbotConfigTest.*
+)
+
+add_test(
+        NAME
+        VendorCacheTests
+        COMMAND
+        ${CMAKE_BINARY_DIR}/src/test/unit_tests --gtest_filter=VendorCacheTest.*
+)
+
+add_custom_target(mod-playerbots-tests DEPENDS unit_tests)

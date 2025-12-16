@@ -230,4 +230,17 @@ TEST_F(ProgressionHelperTest, BlocksRubySanctumUntilTierFive)
     SetProgressionState(PROGRESSION_WOTLK_TIER_5);
     EXPECT_TRUE(sIndividualProgression->IsItemAllowedForProgression(player, RS_ITEM));
 }
+
+TEST_F(ProgressionHelperTest, BlocksRubySanctum284GearUntilTierFive)
+{
+    constexpr uint32 RS_HARDMODE = 33000;
+
+    StoreItemTemplate(RS_HARDMODE, IP_LEVEL_WOTLK, 284);
+
+    SetProgressionState(PROGRESSION_WOTLK_TIER_4);
+    EXPECT_FALSE(sIndividualProgression->IsItemAllowedForProgression(player, RS_HARDMODE));
+
+    SetProgressionState(PROGRESSION_WOTLK_TIER_5);
+    EXPECT_TRUE(sIndividualProgression->IsItemAllowedForProgression(player, RS_HARDMODE));
+}
 } // namespace

@@ -16,3 +16,5 @@
 - When ptrace is blocked, gdb needs escalated permissions; request escalation and rerun. Use backtrace to spot crashes in `PlayerbotAIConfig::Initialize` triggered by DB access.
 - `getWorldInstance` returns a `unique_ptr<IWorld>`; replacing it with mocks is allowed via `sWorld.release()`/`reset` in tests. Ensure restoration in `TearDown` to avoid leaking mocks across tests.
 - Vendor baseline tests: `EquipNewItem` fires achievement hooks and will segfault in tests unless `ScriptRegistry<AchievementScript>::InitEnabledHooksIfNeeded(ACHIEVEMENTHOOK_END)` is called; add this to test setup alongside other script registries when mocking `sWorld`.
+- Vendor seeding must be spec-aware: when filling empty slots from vendor cache, pick the candidate with the highest `StatsWeightCalculator` score for the bot (tie-break required level then item level), not just the highest item level. Tests now assert this.
+- Plan tweak: vendor seeding should be spec-aware—use `StatsWeightCalculator` to pick the best vendor item for the bot’s spec from candidates ≤ bot level; add tests to cover score-based vendor selection.

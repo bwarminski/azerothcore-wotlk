@@ -6,6 +6,7 @@
 #include "PlayerbotFactory.h"
 #include "RandomItemMgr.h"
 #include "ScriptMgr.h"
+#include "SharedDefines.h"
 #include "World.h"
 #include "WorldMock.h"
 #include "WorldSession.h"
@@ -122,7 +123,8 @@ protected:
         *fastStore = originalFastTemplates;
     }
 
-    void StoreArmorTemplate(uint32 entry, InventoryType inventoryType, uint32 subClass, uint32 requiredLevel, uint32 itemLevel)
+    void StoreArmorTemplate(uint32 entry, InventoryType inventoryType, uint32 subClass, uint32 requiredLevel,
+        uint32 itemLevel, uint32 statType = 0, int32 statValue = 0)
     {
         auto store = const_cast<ItemTemplateContainer*>(sObjectMgr->GetItemTemplateStore());
         ItemTemplate& proto = (*store)[entry];
@@ -140,6 +142,12 @@ protected:
         proto.SellPrice = 0;
         proto.BuyPrice = 0;
         proto.Duration = 0;
+        proto.StatsCount = statType ? 1 : 0;
+        if (statType)
+        {
+            proto.ItemStat[0].ItemStatType = statType;
+            proto.ItemStat[0].ItemStatValue = statValue;
+        }
 
         auto fastStore = const_cast<std::vector<ItemTemplate*>*>(sObjectMgr->GetItemTemplateStoreFast());
         if (fastStore->size() <= entry)
@@ -202,5 +210,32 @@ TEST_F(VendorCacheTest, InitEquipmentUsesVendorBaselineWhenSlotEmpty)
     Item* headItem = player->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_HEAD);
     ASSERT_NE(headItem, nullptr);
     EXPECT_EQ(headItem->GetEntry(), BASELINE_ITEM);
+}
+
+TEST_F(VendorCacheTest, VendorBaselineUsesStatWeightNotItemLevel)
+{
+    constexpr uint32 VENDOR_ENTRY = 90002;
+    constexpr uint32 HIGH_ITEMLEVEL_LOW_STAT = 42000;
+    constexpr uint32 LOWER_ITEMLEVEL_HIGH_STAT = 42001;
+
+    StoreArmorTemplate(HIGH_ITEMLEVEL_LOW_STAT, INVTYPE_HEAD, ITEM_SUBCLASS_ARMOR_MAIL, 30, 60);
+    StoreArmorTemplate(LOWER_ITEMLEVEL_HIGH_STAT, INVTYPE_HEAD, ITEM_SUBCLASS_ARMOR_MAIL, 30, 45, ITEM_MOD_STRENGTH,
+        40);
+    AddVendorItem(VENDOR_ENTRY, HIGH_ITEMLEVEL_LOW_STAT);
+    AddVendorItem(VENDOR_ENTRY, LOWER_ITEMLEVEL_HIGH_STAT);
+
+    sRandomItemMgr->ResetVendorEquipmentCache();
+
+    PlayerbotFactory factory(player, player->GetLevel(), ITEM_QUALITY_NORMAL, 0);
+    if (Item* existing = player->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_HEAD))
+    {
+        player->DestroyItem(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_HEAD, true);
+    }
+
+    factory.InitEquipment(false, false);
+
+    Item* headItem = player->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_HEAD);
+    ASSERT_NE(headItem, nullptr);
+    EXPECT_EQ(headItem->GetEntry(), LOWER_ITEMLEVEL_HIGH_STAT);
 }
 } // namespace

@@ -100,4 +100,11 @@ add_test(
         ${CMAKE_BINARY_DIR}/src/test/unit_tests --gtest_filter=BiSRampTest.*
 )
 
+add_test(
+        NAME
+        PlayerbotDocsTests
+        COMMAND
+        ${CMAKE_SOURCE_DIR}/src/test/scripts/playerbot_docs_check.sh
+)
+
 add_custom_target(mod-playerbots-tests DEPENDS unit_tests)

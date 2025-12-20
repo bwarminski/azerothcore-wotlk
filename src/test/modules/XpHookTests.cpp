@@ -145,13 +145,14 @@ protected:
         player = nullptr;
     }
 
-    void LoadConfig(bool enabled, uint32 chunkValue)
+    void LoadConfig(bool enabled, uint32 chunkValue, float xpRate = 1.0f)
     {
         configPath = PlayerbotTestUtils::CreatePlayerbotConfig({
             {"AiPlayerbot.Enabled", "1"},
             {"AiPlayerbot.SkipInitialSetup", "1"},
             {"AiPlayerbot.XpUpgradeEnabled", enabled ? "1" : "0"},
             {"AiPlayerbot.XpUpgradeChunk", std::to_string(chunkValue)},
+            {"AiPlayerbot.RandomBotXPRate", std::to_string(xpRate)},
         });
         sConfigMgr->Configure(configPath, std::vector<std::string>());
         sConfigMgr->LoadAppConfigs();
@@ -215,6 +216,16 @@ TEST_F(XpHookTest, TriggersUpgradeAndConsumesChunkOnXpGain)
     sScriptMgr->OnPlayerGiveXP(player, amount, nullptr, PlayerXPSource::XPSOURCE_QUEST);
     EXPECT_EQ(sRandomPlayerbotMgr->GetUpgradePassCallCount(botGuid), 1u);
     EXPECT_EQ(sRandomPlayerbotMgr->GetXpSinceLastUpgrade(botGuid), 100u);
+}
+
+TEST_F(XpHookTest, UsesAdjustedXpAfterRandomBotRate)
+{
+    LoadConfig(true, 1000, 0.5f);
+
+    uint32 amount = 1000;
+    sScriptMgr->OnPlayerGiveXP(player, amount, nullptr, PlayerXPSource::XPSOURCE_QUEST);
+    EXPECT_EQ(sRandomPlayerbotMgr->GetUpgradePassCallCount(botGuid), 0u);
+    EXPECT_EQ(sRandomPlayerbotMgr->GetXpSinceLastUpgrade(botGuid), 500u);
 }
 
 TEST_F(XpHookTest, TriggersUpgradeOnLevelChange)

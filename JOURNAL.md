@@ -23,3 +23,7 @@
 - Updated XpBackfill bracket reset test to equip an out-of-band chest at level 60 before reset; verified reset clears it and uses backfill remainder logic. XpBackfillTests still emit existing gcda corruption warnings.
 - Added low-level bracket reset coverage: when total XP is below the chunk size, ApplyBracketLevelReset now triggers a fallback upgrade pass with vendor baseline and maxLevelForPool set to the new level so bots are not left unequipped; test asserts fallback equips vendor baseline. gcda corruption warnings persist.
 - XpHookTests now exercise ScriptMgr hooks by registering playerbot scripts, seeding CharacterCache with a bot GUID/account, and adding the bot to current-bot tracking via test accessor. gcda warnings still require cleanup for pristine test output.
+
+- Task 5b appears already implemented: `src/test/modules/XpBackfillTests.cpp` exists and `RandomPlayerbotMgr::ApplyLevelBasedUpgradeProgress` is present with backfill + remainder logic. Need Brett confirmation before redoing or moving on.
+
+- Adjusted XP upgrade handling to use post-multiplier XP in OnPlayerGiveXP; added test covering RandomBotXPRate impact. Cleaned stale gcda files before rerun.

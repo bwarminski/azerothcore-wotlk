@@ -5,6 +5,7 @@
 #include "IndividualProgression.h"
 #include "PlayerbotAIConfig.h"
 #include "PlayerbotTestUtils.h"
+#include "ProgressionItemRules.h"
 #include "RandomItemMgr.h"
 #include "RandomPlayerbotMgr.h"
 #include "ScriptMgr.h"
@@ -224,6 +225,11 @@ TEST_F(UpgradeLotteryTest, VendorBaselineSkipsProgressionBlockedItems)
 
     sRandomItemMgr->ResetVendorEquipmentCache();
     sRandomItemMgr->RebuildEquipmentCache();
+
+    EXPECT_TRUE(sIndividualProgression->enabled);
+    EXPECT_EQ(player->GetPlayerSetting("mod-individual-progression", SETTING_PROGRESSION_STATE).value,
+        PROGRESSION_PRE_TBC);
+    EXPECT_FALSE(IsItemAllowedForProgression(player, BLOCKED_ITEM));
 
     sRandomPlayerbotMgr->RunGearUpgradePass(player,
         RandomPlayerbotMgr::UpgradeContext{"progression-vendor", 100, true, std::nullopt});

@@ -31,3 +31,5 @@
 - Added AutoUpgradeEquip short-circuit when XP upgrades enabled to avoid double-upgrade; no direct harness test per Brett.
 
 - Added progression item rules bridge for playerbots; upgrade lottery vendor baseline now respects progression caps. Added UpgradeLotteryTests and CTest entry; AutoUpgradeEquip now skips when XP upgrades enabled.
+
+- Root cause: RandomPlayerbotMgr still used local weak-pointer progression helper, so progression filter was bypassed when pointer null; removed local helper and now use ProgressionItemRules. Added assertions in UpgradeLotteryTests to confirm progression state and item allowance.

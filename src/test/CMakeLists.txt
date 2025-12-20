@@ -1,3 +1,5 @@
+# ABOUTME: Defines unit test targets and CTest entries for the project.
+# ABOUTME: Collects sources and registers module-specific test filters.
 #
 # This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
 #
@@ -89,6 +91,13 @@ add_test(
         UpgradeLotteryTests
         COMMAND
         ${CMAKE_BINARY_DIR}/src/test/unit_tests --gtest_filter=UpgradeLotteryTest.*
+)
+
+add_test(
+        NAME
+        BiSRampTests
+        COMMAND
+        ${CMAKE_BINARY_DIR}/src/test/unit_tests --gtest_filter=BiSRampTest.*
 )
 
 add_custom_target(mod-playerbots-tests DEPENDS unit_tests)

@@ -84,4 +84,11 @@ add_test(
         ${CMAKE_BINARY_DIR}/src/test/unit_tests --gtest_filter=XpHookTest.*
 )
 
+add_test(
+        NAME
+        UpgradeLotteryTests
+        COMMAND
+        ${CMAKE_BINARY_DIR}/src/test/unit_tests --gtest_filter=UpgradeLotteryTest.*
+)
+
 add_custom_target(mod-playerbots-tests DEPENDS unit_tests)

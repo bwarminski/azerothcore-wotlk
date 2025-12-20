@@ -27,3 +27,7 @@
 - Task 5b appears already implemented: `src/test/modules/XpBackfillTests.cpp` exists and `RandomPlayerbotMgr::ApplyLevelBasedUpgradeProgress` is present with backfill + remainder logic. Need Brett confirmation before redoing or moving on.
 
 - Adjusted XP upgrade handling to use post-multiplier XP in OnPlayerGiveXP; added test covering RandomBotXPRate impact. Cleaned stale gcda files before rerun.
+
+- Added AutoUpgradeEquip short-circuit when XP upgrades enabled to avoid double-upgrade; no direct harness test per Brett.
+
+- Added progression item rules bridge for playerbots; upgrade lottery vendor baseline now respects progression caps. Added UpgradeLotteryTests and CTest entry; AutoUpgradeEquip now skips when XP upgrades enabled.

@@ -1,0 +1,235 @@
+// ABOUTME: Verifies xp-driven upgrade lottery respects progression limits for vendor baselines.
+// ABOUTME: Ensures blocked items are excluded from vendor seed selection during upgrades.
+
+#include "AchievementScript.h"
+#include "IndividualProgression.h"
+#include "PlayerbotAIConfig.h"
+#include "PlayerbotTestUtils.h"
+#include "RandomItemMgr.h"
+#include "RandomPlayerbotMgr.h"
+#include "ScriptMgr.h"
+#include "SharedDefines.h"
+#include "World.h"
+#include "WorldMock.h"
+#include "WorldSession.h"
+#include "gmock/gmock.h"
+#include "gtest/gtest.h"
+
+using namespace testing;
+
+namespace
+{
+class UpgradeLotteryTest : public ::testing::Test
+{
+protected:
+    static constexpr ObjectGuid::LowType botGuid = 9201;
+
+    static void EnsureScriptRegistriesInitialized()
+    {
+        static bool initialized = false;
+        if (!initialized)
+        {
+            ScriptRegistry<MiscScript>::InitEnabledHooksIfNeeded(MISCHOOK_END);
+            ScriptRegistry<WorldObjectScript>::InitEnabledHooksIfNeeded(WORLDOBJECTHOOK_END);
+            ScriptRegistry<UnitScript>::InitEnabledHooksIfNeeded(UNITHOOK_END);
+            ScriptRegistry<PlayerScript>::InitEnabledHooksIfNeeded(PLAYERHOOK_END);
+            ScriptRegistry<CommandSC>::InitEnabledHooksIfNeeded(ALLCOMMANDHOOK_END);
+            ScriptRegistry<AchievementScript>::InitEnabledHooksIfNeeded(ACHIEVEMENTHOOK_END);
+            initialized = true;
+        }
+    }
+
+    class TestPlayer : public Player
+    {
+    public:
+        using Player::Player;
+
+        void ForceInitValues(ObjectGuid::LowType guidLow)
+        {
+            Object::_Create(guidLow, uint32(0), HighGuid::Player);
+        }
+    };
+
+    void SetUp() override
+    {
+        EnsureScriptRegistriesInitialized();
+
+        originalWorld = sWorld.release();
+        worldMock = new NiceMock<WorldMock>();
+        sWorld.reset(worldMock);
+
+        static std::string emptyString;
+        ON_CALL(*worldMock, GetDataPath()).WillByDefault(ReturnRef(emptyString));
+        ON_CALL(*worldMock, GetRealmName()).WillByDefault(ReturnRef(emptyString));
+        ON_CALL(*worldMock, GetDefaultDbcLocale()).WillByDefault(Return(LOCALE_enUS));
+        ON_CALL(*worldMock, getRate(_)).WillByDefault(Return(1.0f));
+        ON_CALL(*worldMock, getBoolConfig(_)).WillByDefault(Return(false));
+        ON_CALL(*worldMock, getIntConfig(_)).WillByDefault(Return(DEFAULT_MAX_LEVEL));
+
+        CaptureItemTemplates();
+
+        session = new WorldSession(1, "upgrade-lottery", 0, nullptr, SEC_PLAYER, EXPANSION_WRATH_OF_THE_LICH_KING, 0,
+            LOCALE_enUS, 0, false, false, 0);
+
+        player = new TestPlayer(session);
+        player->ForceInitValues(botGuid);
+        session->SetPlayer(player);
+        player->SetSession(session);
+        player->SetLevel(60);
+        player->SetByteValue(UNIT_FIELD_BYTES_0, 0, RACE_HUMAN);
+        player->SetByteValue(UNIT_FIELD_BYTES_0, 1, CLASS_WARRIOR);
+        player->SetByteValue(UNIT_FIELD_BYTES_0, 2, GENDER_MALE);
+
+        originalProgressionEnabled = sIndividualProgression->enabled;
+        sIndividualProgression->enabled = true;
+
+        SetProgressionState(PROGRESSION_PRE_TBC);
+
+        LoadConfig();
+        sRandomItemMgr->ResetVendorEquipmentCache();
+    }
+
+    void TearDown() override
+    {
+        sRandomPlayerbotMgr->ResetXpForUpgrade(botGuid);
+        PlayerbotTestUtils::RemoveFileIfExists(configPath);
+        RestoreItemTemplates();
+        sRandomItemMgr->ResetVendorEquipmentCache();
+
+        for (auto const& vendorItem : vendorItems)
+        {
+            sObjectMgr->RemoveVendorItem(vendorItem.first, vendorItem.second, false);
+        }
+
+        sIndividualProgression->enabled = originalProgressionEnabled;
+
+        IWorld* currentWorld = sWorld.release();
+        delete currentWorld;
+        sWorld.reset(originalWorld);
+        originalWorld = nullptr;
+        worldMock = nullptr;
+        session = nullptr;
+        player = nullptr;
+        vendorItems.clear();
+    }
+
+    void LoadConfig()
+    {
+        configPath = PlayerbotTestUtils::CreatePlayerbotConfig({
+            {"AiPlayerbot.Enabled", "1"},
+            {"AiPlayerbot.SkipInitialSetup", "1"},
+            {"AiPlayerbot.XpUpgradeEnabled", "1"},
+            {"AiPlayerbot.XpUpgradeChunk", "1000"},
+            {"AiPlayerbot.VendorSeedEnabled", "1"},
+            {"AiPlayerbot.LimitGearExpansion", "0"},
+        });
+        sConfigMgr->Configure(configPath, std::vector<std::string>());
+        sConfigMgr->LoadAppConfigs();
+        PlayerbotAIConfig::instance()->Initialize();
+    }
+
+    void SetProgressionState(uint8 state)
+    {
+        player->UpdatePlayerSetting("mod-individual-progression", SETTING_PROGRESSION_STATE, state);
+    }
+
+    void CaptureItemTemplates()
+    {
+        auto store = const_cast<ItemTemplateContainer*>(sObjectMgr->GetItemTemplateStore());
+        originalTemplates = *store;
+
+        auto fastStore = const_cast<std::vector<ItemTemplate*>*>(sObjectMgr->GetItemTemplateStoreFast());
+        originalFastTemplates = *fastStore;
+    }
+
+    void RestoreItemTemplates()
+    {
+        auto store = const_cast<ItemTemplateContainer*>(sObjectMgr->GetItemTemplateStore());
+        *store = originalTemplates;
+
+        auto fastStore = const_cast<std::vector<ItemTemplate*>*>(sObjectMgr->GetItemTemplateStoreFast());
+        *fastStore = originalFastTemplates;
+    }
+
+    void StoreArmorTemplate(uint32 entry, InventoryType inventoryType, uint32 subClass, uint32 requiredLevel,
+        uint32 itemLevel, uint32 statType = 0, int32 statValue = 0)
+    {
+        auto store = const_cast<ItemTemplateContainer*>(sObjectMgr->GetItemTemplateStore());
+        ItemTemplate& proto = (*store)[entry];
+        proto = ItemTemplate();
+        proto.ItemId = entry;
+        proto.Class = ITEM_CLASS_ARMOR;
+        proto.SubClass = subClass;
+        proto.InventoryType = inventoryType;
+        proto.RequiredLevel = requiredLevel;
+        proto.ItemLevel = itemLevel;
+        proto.Quality = ITEM_QUALITY_NORMAL;
+        proto.AllowableClass = -1;
+        proto.AllowableRace = -1;
+        proto.BuyCount = 1;
+        proto.SellPrice = 0;
+        proto.BuyPrice = 0;
+        proto.Duration = 0;
+        proto.StatsCount = statType ? 1 : 0;
+        if (statType)
+        {
+            proto.ItemStat[0].ItemStatType = statType;
+            proto.ItemStat[0].ItemStatValue = statValue;
+        }
+
+        auto fastStore = const_cast<std::vector<ItemTemplate*>*>(sObjectMgr->GetItemTemplateStoreFast());
+        if (fastStore->size() <= entry)
+        {
+            fastStore->resize(entry + 1, nullptr);
+        }
+        (*fastStore)[entry] = &proto;
+    }
+
+    void AddVendorItem(uint32 vendorEntry, uint32 itemId)
+    {
+        sObjectMgr->AddVendorItem(vendorEntry, itemId, 0, 0, 0, false);
+        vendorItems.emplace_back(vendorEntry, itemId);
+    }
+
+    void ClearSlot(uint8 slot)
+    {
+        if (Item* existing = player->GetItemByPos(INVENTORY_SLOT_BAG_0, slot))
+        {
+            player->DestroyItem(INVENTORY_SLOT_BAG_0, slot, true);
+        }
+    }
+
+    std::string configPath;
+    IWorld* originalWorld = nullptr;
+    NiceMock<WorldMock>* worldMock = nullptr;
+    WorldSession* session = nullptr;
+    TestPlayer* player = nullptr;
+    ItemTemplateContainer originalTemplates;
+    std::vector<ItemTemplate*> originalFastTemplates;
+    std::vector<std::pair<uint32, uint32>> vendorItems;
+    bool originalProgressionEnabled = false;
+};
+
+TEST_F(UpgradeLotteryTest, VendorBaselineSkipsProgressionBlockedItems)
+{
+    constexpr uint32 VENDOR_ENTRY = 93001;
+    constexpr uint32 ALLOWED_ITEM = 46000;
+    constexpr uint32 BLOCKED_ITEM = 46001;
+
+    ClearSlot(EQUIPMENT_SLOT_HEAD);
+    StoreArmorTemplate(ALLOWED_ITEM, INVTYPE_HEAD, ITEM_SUBCLASS_ARMOR_MAIL, 60, 100, ITEM_MOD_STRENGTH, 10);
+    StoreArmorTemplate(BLOCKED_ITEM, INVTYPE_HEAD, ITEM_SUBCLASS_ARMOR_MAIL, 60, 200, ITEM_MOD_STRENGTH, 200);
+    AddVendorItem(VENDOR_ENTRY, ALLOWED_ITEM);
+    AddVendorItem(VENDOR_ENTRY, BLOCKED_ITEM);
+
+    sRandomItemMgr->ResetVendorEquipmentCache();
+    sRandomItemMgr->RebuildEquipmentCache();
+
+    sRandomPlayerbotMgr->RunGearUpgradePass(player,
+        RandomPlayerbotMgr::UpgradeContext{"progression-vendor", 100, true, std::nullopt});
+
+    Item* headItem = player->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_HEAD);
+    ASSERT_NE(headItem, nullptr);
+    EXPECT_EQ(headItem->GetEntry(), ALLOWED_ITEM);
+}
+} // namespace

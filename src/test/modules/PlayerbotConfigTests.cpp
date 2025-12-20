@@ -1,42 +1,20 @@
 // ABOUTME: Exercises playerbot XP upgrade configuration defaults and overrides.
 // ABOUTME: Confirms PlayerbotAIConfig exposes new upgrade settings through getters.
 
-#include "PlayerbotAIConfig.h"
 #include "Config.h"
 #include "IndividualProgression.h"
-#include "gtest/gtest.h"
 #include "World.h"
 #include "WorldMock.h"
+#include "PlayerbotAIConfig.h"
+#include "PlayerbotTestUtils.h"
+#include "gtest/gtest.h"
 
-#include <boost/filesystem.hpp>
-#include <fstream>
 #include <map>
 
 using namespace testing;
 
 namespace
 {
-std::string CreatePlayerbotConfig(std::map<std::string, std::string> const& values)
-{
-    auto path = boost::filesystem::temp_directory_path() /
-        boost::filesystem::unique_path("playerbots-config-%%%%-%%%%.conf");
-    std::ofstream stream(path.c_str());
-    stream << "[playerbots]\n";
-
-    for (auto const& entry : values)
-    {
-        stream << entry.first << " = " << entry.second << "\n";
-    }
-
-    stream.close();
-#if WIN32
-    auto native = path.native();
-    return std::string(native.begin(), native.end());
-#else
-    return path.native();
-#endif
-}
-
 class PlayerbotConfigTest : public ::testing::Test
 {
 protected:
@@ -44,7 +22,7 @@ protected:
     {
         if (!configPath.empty())
         {
-            std::remove(configPath.c_str());
+            PlayerbotTestUtils::RemoveFileIfExists(configPath);
         }
         if (originalWorld)
         {
@@ -58,7 +36,7 @@ protected:
 
     void LoadConfig(std::map<std::string, std::string> const& values)
     {
-        configPath = CreatePlayerbotConfig(values);
+        configPath = PlayerbotTestUtils::CreatePlayerbotConfig(values);
         sConfigMgr->Configure(configPath, std::vector<std::string>());
         sConfigMgr->LoadAppConfigs();
         originalWorld = sWorld.release();

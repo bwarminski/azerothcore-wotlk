@@ -63,4 +63,25 @@ add_test(
         ${CMAKE_BINARY_DIR}/src/test/unit_tests --gtest_filter=VendorCacheTest.*
 )
 
+add_test(
+        NAME
+        XpTrackingTests
+        COMMAND
+        ${CMAKE_BINARY_DIR}/src/test/unit_tests --gtest_filter=XpTrackingTest.*
+)
+
+add_test(
+        NAME
+        XpBackfillTests
+        COMMAND
+        ${CMAKE_BINARY_DIR}/src/test/unit_tests --gtest_filter=XpBackfillTest.*
+)
+
+add_test(
+        NAME
+        XpHookTests
+        COMMAND
+        ${CMAKE_BINARY_DIR}/src/test/unit_tests --gtest_filter=XpHookTest.*
+)
+
 add_custom_target(mod-playerbots-tests DEPENDS unit_tests)

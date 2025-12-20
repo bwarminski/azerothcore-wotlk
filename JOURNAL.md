@@ -34,3 +34,4 @@
 
 - Root cause: RandomPlayerbotMgr still used local weak-pointer progression helper, so progression filter was bypassed when pointer null; removed local helper and now use ProgressionItemRules. Added assertions in UpgradeLotteryTests to confirm progression state and item allowance.
 - Task 7 BiS ramp: added BiSRampTests and BiS ramp logic in RandomPlayerbotMgr using floor=min(90,50+10*weeks) and overcap=min(10,2+weeks) with same roll; ramp only when max level and bot progression state matches configured state.
+- Review follow-up: BiS ramp now applies whenever bot is max level (no ProgressionState gate), and BiSRampTests cover config ProgressionState=0.

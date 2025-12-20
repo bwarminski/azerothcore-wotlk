@@ -103,7 +103,7 @@ protected:
         player = nullptr;
     }
 
-    void LoadConfig(uint32 biSWeeks)
+    void LoadConfig(uint32 biSWeeks, uint8 progressionState = PROGRESSION_WOTLK_TIER_5)
     {
         configPath = PlayerbotTestUtils::CreatePlayerbotConfig({
             {"AiPlayerbot.Enabled", "1"},
@@ -111,7 +111,7 @@ protected:
             {"AiPlayerbot.XpUpgradeEnabled", "1"},
             {"AiPlayerbot.XpUpgradeChunk", "1000"},
             {"AiPlayerbot.VendorSeedEnabled", "0"},
-            {"AiPlayerbot.ProgressionState", std::to_string(PROGRESSION_WOTLK_TIER_5)},
+            {"AiPlayerbot.ProgressionState", std::to_string(progressionState)},
             {"AiPlayerbot.BiSWeeksAtEndgame", std::to_string(biSWeeks)},
         });
         sConfigMgr->Configure(configPath, std::vector<std::string>());
@@ -196,7 +196,7 @@ protected:
 
 TEST_F(BiSRampTest, AppliesPercentileFloorAtEndgameCap)
 {
-    LoadConfig(3);
+    LoadConfig(3, PROGRESSION_START);
     player->SetLevel(DEFAULT_MAX_LEVEL);
     SetProgressionState(PROGRESSION_WOTLK_TIER_5);
 

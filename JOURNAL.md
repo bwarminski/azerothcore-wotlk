@@ -36,3 +36,4 @@
 - Task 7 BiS ramp: added BiSRampTests and BiS ramp logic in RandomPlayerbotMgr using floor=min(90,50+10*weeks) and overcap=min(10,2+weeks) with same roll; ramp only when max level and bot progression state matches configured state.
 - Review follow-up: BiS ramp now applies whenever bot is max level (no ProgressionState gate), and BiSRampTests cover config ProgressionState=0.
 - Task 8 docs: added doc changelog, README section, and PlayerbotDocsTests script/ctest entry to enforce config mentions.
+- Progression helper tests live in `src/test/modules/ProgressionHelperTests.cpp`; module has no `tests/` directory.

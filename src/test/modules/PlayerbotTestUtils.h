@@ -11,12 +11,12 @@
 
 namespace PlayerbotTestUtils
 {
-inline std::string CreatePlayerbotConfig(std::map<std::string, std::string> const& values)
+inline std::string CreateConfig(std::string const& section, std::map<std::string, std::string> const& values)
 {
     auto path = boost::filesystem::temp_directory_path() /
         boost::filesystem::unique_path("playerbots-config-%%%%-%%%%.conf");
     std::ofstream stream(path.c_str());
-    stream << "[playerbots]\n";
+    stream << "[" << section << "]\n";
 
     for (auto const& entry : values)
     {
@@ -30,6 +30,11 @@ inline std::string CreatePlayerbotConfig(std::map<std::string, std::string> cons
 #else
     return path.native();
 #endif
+}
+
+inline std::string CreatePlayerbotConfig(std::map<std::string, std::string> const& values)
+{
+    return CreateConfig("playerbots", values);
 }
 
 inline void RemoveFileIfExists(std::string const& path)

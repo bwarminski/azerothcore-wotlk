@@ -2,14 +2,18 @@
 // ABOUTME: Uses mocked world and session to assert gating on item requirements per progression state.
 
 #include "IndividualProgression.h"
+#include "Config.h"
 #include "ItemTemplate.h"
 #include "ObjectMgr.h"
+#include "PlayerbotTestUtils.h"
 #include "Player.h"
 #include "World.h"
 #include "WorldMock.h"
 #include "WorldSession.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+
+#include <map>
 
 using namespace testing;
 
@@ -81,6 +85,11 @@ protected:
 
     void TearDown() override
     {
+        if (!configPath.empty())
+        {
+            PlayerbotTestUtils::RemoveFileIfExists(configPath);
+        }
+
         RestoreItemTemplates();
 
         sIndividualProgression->enabled = originalEnabled;
@@ -130,6 +139,19 @@ protected:
         player->UpdatePlayerSetting("mod-individual-progression", SETTING_PROGRESSION_STATE, state);
     }
 
+    void LoadConfig(std::map<std::string, std::string> const& values)
+    {
+        if (!configPath.empty())
+        {
+            PlayerbotTestUtils::RemoveFileIfExists(configPath);
+        }
+
+        configPath = PlayerbotTestUtils::CreateConfig("worldserver", values);
+        sConfigMgr->Configure(configPath, std::vector<std::string>());
+        sConfigMgr->LoadAppConfigs();
+        sIndividualProgression->LoadProgressionItemCaps();
+    }
+
     void CaptureItemTemplates()
     {
         auto store = const_cast<ItemTemplateContainer*>(sObjectMgr->GetItemTemplateStore());
@@ -161,6 +183,7 @@ protected:
     bool originalEnabled = false;
     bool originalExcludeAccounts = false;
     int originalProgressionLimit = 0;
+    std::string configPath;
 };
 
 TEST_F(ProgressionHelperTest, BlocksItemsAboveCurrentExpansion)
@@ -242,5 +265,31 @@ TEST_F(ProgressionHelperTest, BlocksRubySanctum284GearUntilTierFive)
 
     SetProgressionState(PROGRESSION_WOTLK_TIER_5);
     EXPECT_TRUE(sIndividualProgression->IsItemAllowedForProgression(player, RS_HARDMODE));
+}
+
+TEST_F(ProgressionHelperTest, UsesConfiguredItemCaps)
+{
+    constexpr uint32 BT_ITEM = 41000;
+    constexpr uint32 BT_ALLOWED_ITEM = 41001;
+
+    LoadConfig({
+        {"IndividualProgression.ItemCaps.10.MaxRequiredLevel", std::to_string(IP_LEVEL_TBC)},
+        {"IndividualProgression.ItemCaps.10.MaxItemLevel", "150"}
+    });
+
+    StoreItemTemplate(BT_ITEM, IP_LEVEL_TBC, 154);
+    StoreItemTemplate(BT_ALLOWED_ITEM, IP_LEVEL_TBC, 150);
+
+    SetProgressionState(PROGRESSION_TBC_TIER_2);
+
+    EXPECT_FALSE(sIndividualProgression->IsItemAllowedForProgression(player, BT_ITEM));
+    EXPECT_TRUE(sIndividualProgression->IsItemAllowedForProgression(player, BT_ALLOWED_ITEM));
+
+    LoadConfig({
+        {"IndividualProgression.ItemCaps.10.MaxRequiredLevel", std::to_string(IP_LEVEL_TBC)},
+        {"IndividualProgression.ItemCaps.10.MaxItemLevel", "160"}
+    });
+
+    EXPECT_TRUE(sIndividualProgression->IsItemAllowedForProgression(player, BT_ITEM));
 }
 } // namespace

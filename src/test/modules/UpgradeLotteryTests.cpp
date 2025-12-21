@@ -152,6 +152,15 @@ protected:
         *fastStore = originalFastTemplates;
     }
 
+    void ResetItemTemplates()
+    {
+        auto store = const_cast<ItemTemplateContainer*>(sObjectMgr->GetItemTemplateStore());
+        store->clear();
+
+        auto fastStore = const_cast<std::vector<ItemTemplate*>*>(sObjectMgr->GetItemTemplateStoreFast());
+        fastStore->clear();
+    }
+
     void StoreArmorTemplate(uint32 entry, InventoryType inventoryType, uint32 subClass, uint32 requiredLevel,
         uint32 itemLevel, uint32 statType = 0, int32 statValue = 0)
     {
@@ -184,6 +193,14 @@ protected:
             fastStore->resize(entry + 1, nullptr);
         }
         (*fastStore)[entry] = &proto;
+    }
+
+    void SeedChestItems(uint32 baseEntry, uint32 count, uint32 requiredLevel, uint32 itemLevel)
+    {
+        for (uint32 i = 0; i < count; ++i)
+        {
+            StoreArmorTemplate(baseEntry + i, INVTYPE_CHEST, ITEM_SUBCLASS_ARMOR_PLATE, requiredLevel, itemLevel);
+        }
     }
 
     void AddVendorItem(uint32 vendorEntry, uint32 itemId)
@@ -264,5 +281,49 @@ TEST_F(UpgradeLotteryTest, SharedHelperBlocksItemsBelowExpansionIdThreshold)
     Item* headItem = player->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_HEAD);
     ASSERT_NE(headItem, nullptr);
     EXPECT_EQ(headItem->GetEntry(), ALLOWED_ITEM);
+}
+
+TEST_F(UpgradeLotteryTest, WeightedPercentilePrefersMidTierAtLowerRolls)
+{
+    constexpr uint32 BASE_ENTRY = 61000;
+    constexpr uint32 OUTLIER_ENTRY = 61150;
+
+    ResetItemTemplates();
+    SetProgressionState(PROGRESSION_WOTLK_TIER_5);
+    player->SetLevel(DEFAULT_MAX_LEVEL);
+
+    SeedChestItems(BASE_ENTRY, 100, DEFAULT_MAX_LEVEL, 200);
+    StoreArmorTemplate(OUTLIER_ENTRY, INVTYPE_CHEST, ITEM_SUBCLASS_ARMOR_PLATE, DEFAULT_MAX_LEVEL, 280);
+    sRandomItemMgr->RebuildEquipmentCache();
+    ClearSlot(EQUIPMENT_SLOT_CHEST);
+
+    sRandomPlayerbotMgr->RunGearUpgradePass(player,
+        RandomPlayerbotMgr::UpgradeContext{"weighted-mid", 90, false, DEFAULT_MAX_LEVEL});
+
+    Item* chestItem = player->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_CHEST);
+    ASSERT_NE(chestItem, nullptr);
+    EXPECT_NE(chestItem->GetEntry(), OUTLIER_ENTRY);
+}
+
+TEST_F(UpgradeLotteryTest, WeightedPercentileSelectsOutlierAtTopRolls)
+{
+    constexpr uint32 BASE_ENTRY = 62000;
+    constexpr uint32 OUTLIER_ENTRY = 62150;
+
+    ResetItemTemplates();
+    SetProgressionState(PROGRESSION_WOTLK_TIER_5);
+    player->SetLevel(DEFAULT_MAX_LEVEL);
+
+    SeedChestItems(BASE_ENTRY, 100, DEFAULT_MAX_LEVEL, 200);
+    StoreArmorTemplate(OUTLIER_ENTRY, INVTYPE_CHEST, ITEM_SUBCLASS_ARMOR_PLATE, DEFAULT_MAX_LEVEL, 280);
+    sRandomItemMgr->RebuildEquipmentCache();
+    ClearSlot(EQUIPMENT_SLOT_CHEST);
+
+    sRandomPlayerbotMgr->RunGearUpgradePass(player,
+        RandomPlayerbotMgr::UpgradeContext{"weighted-top", 99, false, DEFAULT_MAX_LEVEL});
+
+    Item* chestItem = player->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_CHEST);
+    ASSERT_NE(chestItem, nullptr);
+    EXPECT_EQ(chestItem->GetEntry(), OUTLIER_ENTRY);
 }
 } // namespace

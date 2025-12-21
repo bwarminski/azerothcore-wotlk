@@ -7,9 +7,9 @@ Reference materials:
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** Add vendor-seeded baseline gear and XP-driven percentile upgrades for randombots, enforced by individual progression rules and a configurable weekly BiS ramp. Bots always meet vendor baseline, upgrade candidates respect progression, and odds ramp is global-config-driven.
+**Goal:** Add vendor-seeded baseline gear and XP-driven percentile upgrades for randombots, enforced by individual progression rules and a configurable weekly BiS ramp. Bots always meet vendor baseline, upgrade candidates respect progression (using DB-driven conditions from the individual progression module), and odds ramp is global-config-driven. Remove the legacy progression caps conf to avoid conflicting sources.
 
-**Architecture:** Build a vendor gear cache; store per-bot XP since last upgrade; on configurable XP steps, level-ups, and endgame week changes, roll a percentile per slot across all suitable gear (up to bot level and progression) distributed by gear score, pick the nearest percentile item, and equip if it beats current; otherwise fall back to vendor baseline if better. Progression enforcement uses a public helper in mod-individual-progression. A global weeks-at-endgame config lifts percentile floors and over-cap odds for max-level bots at progression cap. Existing auto-upgrade paths are gated by the new mode. Configs live in playerbots.conf.
+**Architecture:** Build a vendor gear cache; store per-bot XP since last upgrade; on configurable XP steps, level-ups, and endgame week changes, roll a percentile per slot across all suitable gear (up to bot level and progression) distributed by gear score, pick the nearest percentile item, and equip if it beats current; otherwise fall back to vendor baseline if better. Progression enforcement uses a public helper in mod-individual-progression backed by DB conditions (progression quests, vendor/drop gating) with a test seam; retire static caps/config entirely. Optimize upgrade selection by using cumulative weight + binary search and cache score computations per (class/spec/level/progression) to avoid repeated StatWeight calculations. A global weeks-at-endgame config lifts percentile floors and over-cap odds for max-level bots at progression cap. Existing auto-upgrade paths are gated by the new mode. Configs live in playerbots.conf.
 
 **Tech Stack:** AzerothCore C++ modules (mod-playerbots, mod-individual-progression), CMake, (g)test harness for new unit/logic tests.
 
@@ -17,7 +17,7 @@ Reference materials:
 **Files:**
 - Modify: `modules/mod-individual-progression/src/IndividualProgression.h`
 - Modify: `modules/mod-individual-progression/src/IndividualProgression.cpp`
-- Add: `modules/mod-individual-progression/tests/ProgressionHelperTests.cpp`
+- Modify: `src/test/modules/ProgressionHelperTests.cpp`
 **Step 1: Write the failing test**  
 Create gtest that sets up a fake player/progression state and asserts `IsItemAllowedForProgression(Player*, uint32)` returns false for an out-of-phase item and true for an allowed item. Include clear fixtures for expansion/phase boundaries.
 **Step 2: Run it to make sure it fails**  
@@ -29,21 +29,22 @@ Add a public helper in `IndividualProgression` that mirrors existing gating (pha
 **Step 5: Commit**  
 `git add modules/mod-individual-progression/src/IndividualProgression.* modules/mod-individual-progression/tests/ProgressionHelperTests.cpp && git commit -m "feat: expose progression item allow helper"`
 
-### Task 1b: Shared progression item allowance helper
+### Task 1b: DB-conditioned progression helper with test seam
 **Files:**
 - Modify: `modules/mod-individual-progression/src/IndividualProgression.h`
 - Modify: `modules/mod-individual-progression/src/IndividualProgression.cpp`
- - Modify: `src/test/modules/ProgressionHelperTests.cpp`
+- Modify: `src/test/modules/ProgressionHelperTests.cpp`
+- (Optional for test seam) Add: `modules/mod-individual-progression/include/ProgressionConditionProvider.h`
 **Step 1: Write the failing test**  
-Extend gtests to assert a public helper in mod-individual-progression answers “is item allowed for this player” using the module’s own DB-backed progression logic (not hardcoded caps). Ensure playerbots can call this helper (and stop maintaining separate cap tables).
+Extend gtests to assert the shared `IsItemAllowedForProgression(Player*, itemId)` uses DB-backed progression conditions (e.g., quest-gated drop/vendor conditions) rather than static caps. Provide a fixture/stub condition provider so tests can simulate conditions without a live DB. Cover allow/deny across multiple progression quests.
 **Step 2: Run it to make sure it fails**  
-`cmake --build build --target mod-individual-progression-tests && ctest -R ProgressionHelperTests -V` (expect failure due to missing helper/export).
+`cmake --build build --target mod-individual-progression-tests && ctest -R ProgressionHelperTests -V` (expect failure due to missing provider/export).
 **Step 3: Write minimal implementation**  
-Expose a public API in mod-individual-progression that answers item allowance via its existing DB-backed progression logic (vendors/drops/conditions). Export it for external modules. Update playerbots to call this shared helper instead of maintaining local caps.
+Add an injectable condition provider interface (default implementation pulls ConditionMgr/world DB conditions for progression quests tied to items) and wire `IsItemAllowedForProgression` to use it. Drop config-based caps; rely on DB conditions as the sole source. Export helper for external modules.
 **Step 4: Run the tests to confirm success**  
 `cmake --build build --target mod-individual-progression-tests && ctest -R ProgressionHelperTests -V`.
 **Step 5: Commit**  
-`git add modules/mod-individual-progression/src/IndividualProgression.* modules/mod-individual-progression/tests/ProgressionHelperTests.cpp && git commit -m "feat: share progression item allowance helper"`
+`git add modules/mod-individual-progression/src/IndividualProgression.* src/test/modules/ProgressionHelperTests.cpp modules/mod-individual-progression/include/ProgressionConditionProvider.h && git commit -m "feat: drive progression gating from db conditions"`
 
 ### Task 1c: Replace hardcoded expansion gate in playerbots
 **Files:**
@@ -76,6 +77,22 @@ Remove `GetBestVendorItem` declarations/definitions; clean up any dead code path
 `cmake --build build --target mod-playerbots-tests && ctest -R VendorCacheTests -V`.
 **Step 5: Commit**  
 `git add modules/mod-playerbots/src/RandomItemMgr.* modules/mod-playerbots/tests/VendorCacheTests.cpp && git commit -m "chore: remove unused vendor helper"`
+
+### Task 1e: Remove static progression caps config
+**Files:**
+- Modify: `modules/mod-individual-progression/src/IndividualProgression.cpp`
+- Delete: `modules/mod-individual-progression/conf/progression_item_caps.conf.dist`
+- Modify: `src/test/modules/ProgressionHelperTests.cpp`
+**Step 1: Write the failing test**  
+Add/adjust gtests to assert the live allowance path uses DB conditions by default and does not rely on static cap tables or config. Ensure no references remain to the removed conf.
+**Step 2: Run it to make sure it fails**  
+`cmake --build build --target mod-individual-progression-tests && ctest -R ProgressionHelperTests -V` (expect failure while caps/conf still present).
+**Step 3: Write minimal implementation**  
+Delete the cap loading/config code and references; rely solely on DB-conditioned gating. Update docs/comments to point to DB-driven gating. Ensure playerbots continue to route through the shared helper.
+**Step 4: Run the tests to confirm success**  
+`cmake --build build --target mod-individual-progression-tests && ctest -R ProgressionHelperTests -V`.
+**Step 5: Commit**  
+`git add modules/mod-individual-progression/src/IndividualProgression.cpp src/test/modules/ProgressionHelperTests.cpp && git rm modules/mod-individual-progression/conf/progression_item_caps.conf.dist && git commit -m "refactor: remove static progression caps in favor of db conditions"`
 
 ### Task 2: Playerbot configs for XP upgrades and ramp
 **Files:**
@@ -189,6 +206,53 @@ Change selection to score-weighted cumulative percentile: compute weights (score
 `cmake --build build --target mod-playerbots-tests && ctest -R UpgradeLotteryTests -V`.
 **Step 5: Commit**  
 `git add modules/mod-playerbots/src/RandomPlayerbotMgr.cpp modules/mod-playerbots/tests/UpgradeLotteryTests.cpp && git commit -m "refactor: use weighted percentile for gear selection"`
+
+### Task 6f: Optimize selection lookup (cumulative + binary search)
+**Files:**
+- Modify: `modules/mod-playerbots/src/RandomPlayerbotMgr.cpp`
+- Modify: `modules/mod-playerbots/tests/UpgradeLotteryTests.cpp`
+**Step 1: Write the failing test**  
+Add gtest ensuring the selection uses a cumulative weight array with binary search rather than linear scanning, and that selection matches the previous behavior for representative rolls (0, mid, 100) on a known candidate set.
+**Step 2: Run it to make sure it fails**  
+`cmake --build build --target mod-playerbots-tests && ctest -R UpgradeLotteryTests -V` (expect failure while linear scan remains).
+**Step 3: Write minimal implementation**  
+Compute cumulative weights once, then use `std::lower_bound` on the cumulative array to pick the candidate for the rolled weight. Keep the rank-based fallback for zero/invalid total weight.
+**Step 4: Run the tests to confirm success**  
+`cmake --build build --target mod-playerbots-tests && ctest -R UpgradeLotteryTests -V`.
+**Step 5: Commit**  
+`git add modules/mod-playerbots/src/RandomPlayerbotMgr.cpp modules/mod-playerbots/tests/UpgradeLotteryTests.cpp && git commit -m "perf: binary search cumulative weights for gear selection"`
+
+### Task 6g: Cache score calculations per bot state
+**Files:**
+- Modify: `modules/mod-playerbots/src/RandomPlayerbotMgr.cpp`
+- Add (for test seam): `modules/mod-playerbots/src/factory/StatsWeightCache.h/.cpp` or integrate into `RandomPlayerbotMgr`
+- Modify: `modules/mod-playerbots/tests/UpgradeLotteryTests.cpp`
+**Step 1: Write the failing test**  
+Add gtest with a test double for the score provider (e.g., injectable interface) that counts `CalculateItem` calls; assert that repeated candidate evaluation for the same (class/spec/level/progression) uses cached scores (call count == 1 per item) and that a different spec/level/progression invalidates or keys separately.
+**Step 2: Run it to make sure it fails**  
+`cmake --build build --target mod-playerbots-tests && ctest -R UpgradeLotteryTests -V` (expect failure without caching/injection).
+**Step 3: Write minimal implementation**  
+Introduce a cache keyed by (class, spec tab, level, progression state, itemId/randomProp) storing computed scores. Allow injection of a score provider for tests; production uses `StatsWeightCalculator`. Clear or bypass cache when bot state changes. Use the cache in upgrade pass to avoid recomputation.
+**Step 4: Run the tests to confirm success**  
+`cmake --build build --target mod-playerbots-tests && ctest -R UpgradeLotteryTests -V`.
+**Step 5: Commit**  
+`git add modules/mod-playerbots/src/RandomPlayerbotMgr.cpp modules/mod-playerbots/src/factory/StatsWeightCache.* modules/mod-playerbots/tests/UpgradeLotteryTests.cpp && git commit -m "perf: cache gear scores per bot state"`
+
+### Task 6e: Diagnostic logging for gear rolls
+**Files:**
+- Modify: `modules/mod-playerbots/src/RandomPlayerbotMgr.cpp`
+- Modify: `modules/mod-playerbots/conf/playerbots.conf.dist` (to add a toggle)
+- Add: `modules/mod-playerbots/tests/UpgradeLotteryTests.cpp` (if needed)
+**Step 1: Write the failing test**  
+Optionally add a lightweight test to assert that when logging is enabled, upgrade passes emit a log entry with bot name, slot, roll, chosen item, score, vendor fallback. If too heavy, skip test per logging exception.
+**Step 2: Run it to make sure it fails**  
+`cmake --build build --target mod-playerbots-tests && ctest -R UpgradeLotteryTests -V` (or skip if no test).
+**Step 3: Write minimal implementation**  
+Add a config flag `AiPlayerbot.UpgradeLogging` (default off). When enabled, log per-slot upgrade decisions: roll value (after BiS ramp/floor), percentile, chosen item ID/name/score, vendor candidate ID/name, current gear score, and reason (xp-gain/level-set/bracket). Keep logging concise and gated to avoid spam.
+**Step 4: Run the tests to confirm success**  
+`cmake --build build --target mod-playerbots-tests && ctest -R UpgradeLotteryTests -V` (or verify manually if test skipped).
+**Step 5: Commit**  
+`git add modules/mod-playerbots/src/RandomPlayerbotMgr.cpp modules/mod-playerbots/conf/playerbots.conf.dist modules/mod-playerbots/tests/UpgradeLotteryTests.cpp && git commit -m "feat: add optional upgrade roll logging"`
 
 ### Task 6b: Bracket level-change integration
 **Files:**

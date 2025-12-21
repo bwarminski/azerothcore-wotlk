@@ -1,5 +1,5 @@
 // ABOUTME: Validates progression-based item allowances for individual progression helpers.
-// ABOUTME: Uses mocked world and session to assert gating on item requirements per progression state.
+// ABOUTME: Uses mocked world and condition providers to assert gating on progression quests.
 
 #include "IndividualProgression.h"
 #include "Config.h"
@@ -8,6 +8,7 @@
 #include "PlayerbotTestUtils.h"
 #include "Player.h"
 #include "ProgressionItemRules.h"
+#include "ProgressionConditionProvider.h"
 #include "World.h"
 #include "WorldMock.h"
 #include "WorldSession.h"
@@ -15,6 +16,7 @@
 #include "gtest/gtest.h"
 
 #include <map>
+#include <memory>
 
 using namespace testing;
 
@@ -91,6 +93,8 @@ protected:
             PlayerbotTestUtils::RemoveFileIfExists(configPath);
         }
 
+        sIndividualProgression->SetProgressionConditionProvider(nullptr);
+
         RestoreItemTemplates();
 
         sIndividualProgression->enabled = originalEnabled;
@@ -150,7 +154,6 @@ protected:
         configPath = PlayerbotTestUtils::CreateConfig("worldserver", values);
         sConfigMgr->Configure(configPath, std::vector<std::string>());
         sConfigMgr->LoadAppConfigs();
-        sIndividualProgression->LoadProgressionItemCaps();
     }
 
     void CaptureItemTemplates()
@@ -187,6 +190,46 @@ protected:
     std::string configPath;
 };
 
+class TestProgressionConditionProvider : public ProgressionConditionProvider
+{
+public:
+    void RequireQuest(uint32 itemId, uint32 questId)
+    {
+        requiredQuests[itemId] = questId;
+    }
+
+    void SetQuestStatus(uint32 questId, QuestStatus status)
+    {
+        questStatuses[questId] = status;
+    }
+
+    bool IsItemAllowed(Player* /*player*/, uint32 itemId) const override
+    {
+        auto itr = requiredQuests.find(itemId);
+        if (itr == requiredQuests.end())
+        {
+            return true;
+        }
+
+        auto statusItr = questStatuses.find(itr->second);
+        if (statusItr == questStatuses.end())
+        {
+            return false;
+        }
+
+        return statusItr->second == QUEST_STATUS_REWARDED;
+    }
+
+private:
+    std::map<uint32, uint32> requiredQuests;
+    std::map<uint32, QuestStatus> questStatuses;
+};
+
+uint32 GetProgressionQuestId(ProgressionState state)
+{
+    return 66000 + static_cast<uint32>(state);
+}
+
 TEST_F(ProgressionHelperTest, BlocksItemsAboveCurrentExpansion)
 {
     constexpr uint32 VANILLA_ITEM = 10000;
@@ -195,7 +238,13 @@ TEST_F(ProgressionHelperTest, BlocksItemsAboveCurrentExpansion)
     StoreItemTemplate(VANILLA_ITEM, 60, 70);
     StoreItemTemplate(TBC_ITEM, IP_LEVEL_TBC, 164);
 
-    SetProgressionState(PROGRESSION_AQ);
+    auto provider = std::make_shared<TestProgressionConditionProvider>();
+    provider->RequireQuest(VANILLA_ITEM, GetProgressionQuestId(PROGRESSION_AQ));
+    provider->RequireQuest(TBC_ITEM, GetProgressionQuestId(PROGRESSION_PRE_TBC));
+    sIndividualProgression->SetProgressionConditionProvider(provider);
+
+    provider->SetQuestStatus(GetProgressionQuestId(PROGRESSION_AQ), QUEST_STATUS_REWARDED);
+    provider->SetQuestStatus(GetProgressionQuestId(PROGRESSION_PRE_TBC), QUEST_STATUS_NONE);
 
     EXPECT_TRUE(sIndividualProgression->IsItemAllowedForProgression(player, VANILLA_ITEM));
     EXPECT_FALSE(sIndividualProgression->IsItemAllowedForProgression(player, TBC_ITEM));
@@ -209,7 +258,13 @@ TEST_F(ProgressionHelperTest, BlocksLateTbcGearBeforeSunwell)
     StoreItemTemplate(BT_ITEM, IP_LEVEL_TBC, 152);
     StoreItemTemplate(SUNWELL_ITEM, IP_LEVEL_TBC, 164);
 
-    SetProgressionState(PROGRESSION_TBC_TIER_2);
+    auto provider = std::make_shared<TestProgressionConditionProvider>();
+    provider->RequireQuest(BT_ITEM, GetProgressionQuestId(PROGRESSION_TBC_TIER_2));
+    provider->RequireQuest(SUNWELL_ITEM, GetProgressionQuestId(PROGRESSION_TBC_TIER_4));
+    sIndividualProgression->SetProgressionConditionProvider(provider);
+
+    provider->SetQuestStatus(GetProgressionQuestId(PROGRESSION_TBC_TIER_2), QUEST_STATUS_REWARDED);
+    provider->SetQuestStatus(GetProgressionQuestId(PROGRESSION_TBC_TIER_4), QUEST_STATUS_NONE);
 
     EXPECT_TRUE(sIndividualProgression->IsItemAllowedForProgression(player, BT_ITEM));
     EXPECT_FALSE(sIndividualProgression->IsItemAllowedForProgression(player, SUNWELL_ITEM));
@@ -223,7 +278,13 @@ TEST_F(ProgressionHelperTest, BlocksIccGearBeforeIccPhase)
     StoreItemTemplate(ULD_ITEM, IP_LEVEL_WOTLK, 226);
     StoreItemTemplate(ICC_ITEM, IP_LEVEL_WOTLK, 264);
 
-    SetProgressionState(PROGRESSION_WOTLK_TIER_1);
+    auto provider = std::make_shared<TestProgressionConditionProvider>();
+    provider->RequireQuest(ULD_ITEM, GetProgressionQuestId(PROGRESSION_WOTLK_TIER_1));
+    provider->RequireQuest(ICC_ITEM, GetProgressionQuestId(PROGRESSION_WOTLK_TIER_3));
+    sIndividualProgression->SetProgressionConditionProvider(provider);
+
+    provider->SetQuestStatus(GetProgressionQuestId(PROGRESSION_WOTLK_TIER_1), QUEST_STATUS_REWARDED);
+    provider->SetQuestStatus(GetProgressionQuestId(PROGRESSION_WOTLK_TIER_3), QUEST_STATUS_NONE);
 
     EXPECT_TRUE(sIndividualProgression->IsItemAllowedForProgression(player, ULD_ITEM));
     EXPECT_FALSE(sIndividualProgression->IsItemAllowedForProgression(player, ICC_ITEM));
@@ -234,9 +295,35 @@ TEST_F(ProgressionHelperTest, AllowsWrathItemsAtEndProgression)
     constexpr uint32 WOTLK_ITEM = 30000;
     StoreItemTemplate(WOTLK_ITEM, IP_LEVEL_WOTLK, 200);
 
-    SetProgressionState(PROGRESSION_WOTLK_TIER_2);
+    auto provider = std::make_shared<TestProgressionConditionProvider>();
+    provider->RequireQuest(WOTLK_ITEM, GetProgressionQuestId(PROGRESSION_WOTLK_TIER_2));
+    sIndividualProgression->SetProgressionConditionProvider(provider);
+
+    provider->SetQuestStatus(GetProgressionQuestId(PROGRESSION_WOTLK_TIER_2), QUEST_STATUS_REWARDED);
 
     EXPECT_TRUE(sIndividualProgression->IsItemAllowedForProgression(player, WOTLK_ITEM));
+}
+
+TEST_F(ProgressionHelperTest, UsesConditionProviderForProgressionQuests)
+{
+    constexpr uint32 QUEST_ALLOWED = 66005;
+    constexpr uint32 QUEST_BLOCKED = 66006;
+    constexpr uint32 ITEM_ALLOWED = 31000;
+    constexpr uint32 ITEM_BLOCKED = 31001;
+
+    StoreItemTemplate(ITEM_ALLOWED, IP_LEVEL_WOTLK, 300);
+    StoreItemTemplate(ITEM_BLOCKED, IP_LEVEL_WOTLK, 300);
+
+    auto provider = std::make_shared<TestProgressionConditionProvider>();
+    provider->RequireQuest(ITEM_ALLOWED, QUEST_ALLOWED);
+    provider->RequireQuest(ITEM_BLOCKED, QUEST_BLOCKED);
+    sIndividualProgression->SetProgressionConditionProvider(provider);
+
+    provider->SetQuestStatus(QUEST_ALLOWED, QUEST_STATUS_REWARDED);
+    provider->SetQuestStatus(QUEST_BLOCKED, QUEST_STATUS_NONE);
+
+    EXPECT_TRUE(sIndividualProgression->IsItemAllowedForProgression(player, ITEM_ALLOWED));
+    EXPECT_FALSE(sIndividualProgression->IsItemAllowedForProgression(player, ITEM_BLOCKED));
 }
 
 TEST_F(ProgressionHelperTest, BlocksRubySanctumUntilTierFive)
@@ -247,11 +334,18 @@ TEST_F(ProgressionHelperTest, BlocksRubySanctumUntilTierFive)
     StoreItemTemplate(ICC_HEROIC, IP_LEVEL_WOTLK, 277);
     StoreItemTemplate(RS_ITEM, IP_LEVEL_WOTLK, 284);
 
-    SetProgressionState(PROGRESSION_WOTLK_TIER_4);
+    auto provider = std::make_shared<TestProgressionConditionProvider>();
+    provider->RequireQuest(ICC_HEROIC, GetProgressionQuestId(PROGRESSION_WOTLK_TIER_4));
+    provider->RequireQuest(RS_ITEM, GetProgressionQuestId(PROGRESSION_WOTLK_TIER_5));
+    sIndividualProgression->SetProgressionConditionProvider(provider);
+
+    provider->SetQuestStatus(GetProgressionQuestId(PROGRESSION_WOTLK_TIER_4), QUEST_STATUS_REWARDED);
+    provider->SetQuestStatus(GetProgressionQuestId(PROGRESSION_WOTLK_TIER_5), QUEST_STATUS_NONE);
+
     EXPECT_TRUE(sIndividualProgression->IsItemAllowedForProgression(player, ICC_HEROIC));
     EXPECT_FALSE(sIndividualProgression->IsItemAllowedForProgression(player, RS_ITEM));
 
-    SetProgressionState(PROGRESSION_WOTLK_TIER_5);
+    provider->SetQuestStatus(GetProgressionQuestId(PROGRESSION_WOTLK_TIER_5), QUEST_STATUS_REWARDED);
     EXPECT_TRUE(sIndividualProgression->IsItemAllowedForProgression(player, RS_ITEM));
 }
 
@@ -261,40 +355,59 @@ TEST_F(ProgressionHelperTest, BlocksRubySanctum284GearUntilTierFive)
 
     StoreItemTemplate(RS_HARDMODE, IP_LEVEL_WOTLK, 284);
 
-    SetProgressionState(PROGRESSION_WOTLK_TIER_4);
+    auto provider = std::make_shared<TestProgressionConditionProvider>();
+    provider->RequireQuest(RS_HARDMODE, GetProgressionQuestId(PROGRESSION_WOTLK_TIER_5));
+    sIndividualProgression->SetProgressionConditionProvider(provider);
+
+    provider->SetQuestStatus(GetProgressionQuestId(PROGRESSION_WOTLK_TIER_5), QUEST_STATUS_NONE);
     EXPECT_FALSE(sIndividualProgression->IsItemAllowedForProgression(player, RS_HARDMODE));
 
-    SetProgressionState(PROGRESSION_WOTLK_TIER_5);
+    provider->SetQuestStatus(GetProgressionQuestId(PROGRESSION_WOTLK_TIER_5), QUEST_STATUS_REWARDED);
     EXPECT_TRUE(sIndividualProgression->IsItemAllowedForProgression(player, RS_HARDMODE));
 }
 
-TEST_F(ProgressionHelperTest, UsesConfiguredItemCaps)
+TEST_F(ProgressionHelperTest, UsesProgressionQuestConditions)
 {
     constexpr uint32 BT_ITEM = 41000;
-    constexpr uint32 BT_ALLOWED_ITEM = 41001;
+
+    StoreItemTemplate(BT_ITEM, IP_LEVEL_TBC, 154);
+
+    auto provider = std::make_shared<TestProgressionConditionProvider>();
+    provider->RequireQuest(BT_ITEM, GetProgressionQuestId(PROGRESSION_TBC_TIER_2));
+    sIndividualProgression->SetProgressionConditionProvider(provider);
+
+    provider->SetQuestStatus(GetProgressionQuestId(PROGRESSION_TBC_TIER_2), QUEST_STATUS_NONE);
+    EXPECT_FALSE(sIndividualProgression->IsItemAllowedForProgression(player, BT_ITEM));
+
+    provider->SetQuestStatus(GetProgressionQuestId(PROGRESSION_TBC_TIER_2), QUEST_STATUS_REWARDED);
+    EXPECT_TRUE(sIndividualProgression->IsItemAllowedForProgression(player, BT_ITEM));
+}
+
+TEST_F(ProgressionHelperTest, IgnoresItemCapsConfig)
+{
+    constexpr uint32 BT_ITEM = 41000;
+
+    StoreItemTemplate(BT_ITEM, IP_LEVEL_TBC, 154);
+
+    auto provider = std::make_shared<TestProgressionConditionProvider>();
+    provider->RequireQuest(BT_ITEM, GetProgressionQuestId(PROGRESSION_TBC_TIER_2));
+    sIndividualProgression->SetProgressionConditionProvider(provider);
+
+    provider->SetQuestStatus(GetProgressionQuestId(PROGRESSION_TBC_TIER_2), QUEST_STATUS_NONE);
+    EXPECT_FALSE(sIndividualProgression->IsItemAllowedForProgression(player, BT_ITEM));
 
     LoadConfig({
         {"IndividualProgression.ItemCaps.10.MaxRequiredLevel", std::to_string(IP_LEVEL_TBC)},
         {"IndividualProgression.ItemCaps.10.MaxItemLevel", "150"}
     });
 
-    StoreItemTemplate(BT_ITEM, IP_LEVEL_TBC, 154);
-    StoreItemTemplate(BT_ALLOWED_ITEM, IP_LEVEL_TBC, 150);
-
-    SetProgressionState(PROGRESSION_TBC_TIER_2);
-
     EXPECT_FALSE(sIndividualProgression->IsItemAllowedForProgression(player, BT_ITEM));
-    EXPECT_TRUE(sIndividualProgression->IsItemAllowedForProgression(player, BT_ALLOWED_ITEM));
 
-    LoadConfig({
-        {"IndividualProgression.ItemCaps.10.MaxRequiredLevel", std::to_string(IP_LEVEL_TBC)},
-        {"IndividualProgression.ItemCaps.10.MaxItemLevel", "160"}
-    });
-
+    provider->SetQuestStatus(GetProgressionQuestId(PROGRESSION_TBC_TIER_2), QUEST_STATUS_REWARDED);
     EXPECT_TRUE(sIndividualProgression->IsItemAllowedForProgression(player, BT_ITEM));
 }
 
-TEST_F(ProgressionHelperTest, SharedHelperBlocksItemsWhenModuleDisabled)
+TEST_F(ProgressionHelperTest, SharedHelperAllowsItemsWhenModuleDisabled)
 {
     constexpr uint32 ICC_ITEM = 42000;
 
@@ -303,6 +416,6 @@ TEST_F(ProgressionHelperTest, SharedHelperBlocksItemsWhenModuleDisabled)
 
     sIndividualProgression->enabled = false;
 
-    EXPECT_FALSE(IsItemAllowedForProgression(player, ICC_ITEM));
+    EXPECT_TRUE(IsItemAllowedForProgression(player, ICC_ITEM));
 }
 } // namespace

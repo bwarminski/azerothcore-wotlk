@@ -18,6 +18,7 @@
 - Vendor baseline tests: `EquipNewItem` fires achievement hooks and will segfault in tests unless `ScriptRegistry<AchievementScript>::InitEnabledHooksIfNeeded(ACHIEVEMENTHOOK_END)` is called; add this to test setup alongside other script registries when mocking `sWorld`.
 - Vendor seeding must be spec-aware: when filling empty slots from vendor cache, pick the candidate with the highest `StatsWeightCalculator` score for the bot (tie-break required level then item level), not just the highest item level. Tests now assert this.
 - Plan tweak: vendor seeding should be spec-aware—use `StatsWeightCalculator` to pick the best vendor item for the bot’s spec from candidates ≤ bot level; add tests to cover score-based vendor selection.
+- Progression gating: live code still uses static caps from `progression_item_caps.conf`, but the module ships DB `conditions` rows keyed to progression quests (vendor/drop gating). Plan now removes the caps conf entirely and replaces gating with DB conditions via a shared helper/test seam.
 - RunGearUpgradePass executes spec-aware lottery with progression filtering and vendor-baseline floor; TriggerUpgradePass forwards to it. ApplyBracketLevelReset sets level, clears XP and upgrade counters, and runs a single upgrade pass instead of full randomize. XpBackfillTests assert gear changes rather than stub counters.
 - Upgrade selection now uses percentile-by-rank with per-level caps during backfill; bracket level reset replays backfill and limitGearExpansion gating is enforced in upgrade passes.
 - Updated XpBackfill bracket reset test to equip an out-of-band chest at level 60 before reset; verified reset clears it and uses backfill remainder logic. XpBackfillTests still emit existing gcda corruption warnings.
@@ -39,3 +40,4 @@
 - Progression helper tests live in `src/test/modules/ProgressionHelperTests.cpp`; module has no `tests/` directory.
 - Task 1b updated: shared progression helper uses module logic; playerbots now call ProgressionItemRules helper instead of hardcoded expansion gate.
 - Task 1d removes GetBestVendorItem and updates vendor cache tests to use GetVendorItems.
+- Task 1b follow-up: IsItemAllowedForProgression now returns true when module disabled (after confirming item template exists); DB-backed condition provider pulls all conditions for the item (no type/value filters) and supports condition references.

@@ -114,7 +114,7 @@ protected:
         vendorItems.clear();
     }
 
-    void LoadConfig()
+    void LoadConfig(uint32 limitGearExpansion = 0)
     {
         configPath = PlayerbotTestUtils::CreatePlayerbotConfig({
             {"AiPlayerbot.Enabled", "1"},
@@ -122,7 +122,7 @@ protected:
             {"AiPlayerbot.XpUpgradeEnabled", "1"},
             {"AiPlayerbot.XpUpgradeChunk", "1000"},
             {"AiPlayerbot.VendorSeedEnabled", "1"},
-            {"AiPlayerbot.LimitGearExpansion", "0"},
+            {"AiPlayerbot.LimitGearExpansion", std::to_string(limitGearExpansion)},
         });
         sConfigMgr->Configure(configPath, std::vector<std::string>());
         sConfigMgr->LoadAppConfigs();
@@ -229,6 +229,33 @@ TEST_F(UpgradeLotteryTest, VendorBaselineSkipsProgressionBlockedItems)
     EXPECT_TRUE(sIndividualProgression->enabled);
     EXPECT_EQ(player->GetPlayerSetting("mod-individual-progression", SETTING_PROGRESSION_STATE).value,
         PROGRESSION_PRE_TBC);
+    EXPECT_FALSE(IsItemAllowedForProgression(player, BLOCKED_ITEM));
+
+    sRandomPlayerbotMgr->RunGearUpgradePass(player,
+        RandomPlayerbotMgr::UpgradeContext{"progression-vendor", 100, true, std::nullopt});
+
+    Item* headItem = player->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_HEAD);
+    ASSERT_NE(headItem, nullptr);
+    EXPECT_EQ(headItem->GetEntry(), ALLOWED_ITEM);
+}
+
+TEST_F(UpgradeLotteryTest, SharedHelperBlocksItemsBelowExpansionIdThreshold)
+{
+    constexpr uint32 VENDOR_ENTRY = 93002;
+    constexpr uint32 ALLOWED_ITEM = 22000;
+    constexpr uint32 BLOCKED_ITEM = 22001;
+
+    LoadConfig(1);
+
+    ClearSlot(EQUIPMENT_SLOT_HEAD);
+    StoreArmorTemplate(ALLOWED_ITEM, INVTYPE_HEAD, ITEM_SUBCLASS_ARMOR_MAIL, 60, 100, ITEM_MOD_STRENGTH, 10);
+    StoreArmorTemplate(BLOCKED_ITEM, INVTYPE_HEAD, ITEM_SUBCLASS_ARMOR_MAIL, 60, 200, ITEM_MOD_STRENGTH, 200);
+    AddVendorItem(VENDOR_ENTRY, ALLOWED_ITEM);
+    AddVendorItem(VENDOR_ENTRY, BLOCKED_ITEM);
+
+    sRandomItemMgr->ResetVendorEquipmentCache();
+    sRandomItemMgr->RebuildEquipmentCache();
+
     EXPECT_FALSE(IsItemAllowedForProgression(player, BLOCKED_ITEM));
 
     sRandomPlayerbotMgr->RunGearUpgradePass(player,

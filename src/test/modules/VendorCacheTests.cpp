@@ -185,8 +185,13 @@ TEST_F(VendorCacheTest, PicksHighestVendorItemUpToLevel)
 
     sRandomItemMgr->ResetVendorEquipmentCache();
 
-    EXPECT_EQ(sRandomItemMgr->GetBestVendorItem(CLASS_WARRIOR, 25, INVTYPE_HEAD), LOWER_ITEM);
-    EXPECT_EQ(sRandomItemMgr->GetBestVendorItem(CLASS_WARRIOR, 35, INVTYPE_HEAD), HIGH_ITEM);
+    auto getLastVendorItem = [](std::vector<uint32> const& items) -> uint32
+    {
+        return items.empty() ? 0u : items.back();
+    };
+
+    EXPECT_EQ(getLastVendorItem(sRandomItemMgr->GetVendorItems(CLASS_WARRIOR, 25, INVTYPE_HEAD)), LOWER_ITEM);
+    EXPECT_EQ(getLastVendorItem(sRandomItemMgr->GetVendorItems(CLASS_WARRIOR, 35, INVTYPE_HEAD)), HIGH_ITEM);
 }
 
 TEST_F(VendorCacheTest, InitEquipmentUsesVendorBaselineWhenSlotEmpty)
@@ -198,7 +203,9 @@ TEST_F(VendorCacheTest, InitEquipmentUsesVendorBaselineWhenSlotEmpty)
     AddVendorItem(VENDOR_ENTRY, BASELINE_ITEM);
 
     sRandomItemMgr->ResetVendorEquipmentCache();
-    EXPECT_EQ(sRandomItemMgr->GetBestVendorItem(player->getClass(), player->GetLevel(), INVTYPE_HEAD), BASELINE_ITEM);
+    auto vendorItemsForLevel = sRandomItemMgr->GetVendorItems(player->getClass(), player->GetLevel(), INVTYPE_HEAD);
+    ASSERT_FALSE(vendorItemsForLevel.empty());
+    EXPECT_EQ(vendorItemsForLevel.back(), BASELINE_ITEM);
 
     PlayerbotFactory factory(player, player->GetLevel(), ITEM_QUALITY_NORMAL, 0);
     if (Item* existing = player->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_HEAD))

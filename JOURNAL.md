@@ -38,3 +38,4 @@
 - Task 8 docs: added doc changelog, README section, and PlayerbotDocsTests script/ctest entry to enforce config mentions.
 - Progression helper tests live in `src/test/modules/ProgressionHelperTests.cpp`; module has no `tests/` directory.
 - Task 1b updated: shared progression helper uses module logic; playerbots now call ProgressionItemRules helper instead of hardcoded expansion gate.
+- Task 1d removes GetBestVendorItem and updates vendor cache tests to use GetVendorItems.

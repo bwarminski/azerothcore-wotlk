@@ -7,6 +7,7 @@
 #include "ObjectMgr.h"
 #include "PlayerbotTestUtils.h"
 #include "Player.h"
+#include "ProgressionItemRules.h"
 #include "World.h"
 #include "WorldMock.h"
 #include "WorldSession.h"
@@ -291,5 +292,17 @@ TEST_F(ProgressionHelperTest, UsesConfiguredItemCaps)
     });
 
     EXPECT_TRUE(sIndividualProgression->IsItemAllowedForProgression(player, BT_ITEM));
+}
+
+TEST_F(ProgressionHelperTest, SharedHelperBlocksItemsWhenModuleDisabled)
+{
+    constexpr uint32 ICC_ITEM = 42000;
+
+    StoreItemTemplate(ICC_ITEM, IP_LEVEL_WOTLK, 264);
+    SetProgressionState(PROGRESSION_AQ);
+
+    sIndividualProgression->enabled = false;
+
+    EXPECT_FALSE(IsItemAllowedForProgression(player, ICC_ITEM));
 }
 } // namespace

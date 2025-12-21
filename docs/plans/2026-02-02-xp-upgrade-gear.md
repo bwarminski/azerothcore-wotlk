@@ -29,6 +29,54 @@ Add a public helper in `IndividualProgression` that mirrors existing gating (pha
 **Step 5: Commit**  
 `git add modules/mod-individual-progression/src/IndividualProgression.* modules/mod-individual-progression/tests/ProgressionHelperTests.cpp && git commit -m "feat: expose progression item allow helper"`
 
+### Task 1b: Shared progression item allowance helper
+**Files:**
+- Modify: `modules/mod-individual-progression/src/IndividualProgression.h`
+- Modify: `modules/mod-individual-progression/src/IndividualProgression.cpp`
+ - Modify: `src/test/modules/ProgressionHelperTests.cpp`
+**Step 1: Write the failing test**  
+Extend gtests to assert a public helper in mod-individual-progression answers “is item allowed for this player” using the module’s own DB-backed progression logic (not hardcoded caps). Ensure playerbots can call this helper (and stop maintaining separate cap tables).
+**Step 2: Run it to make sure it fails**  
+`cmake --build build --target mod-individual-progression-tests && ctest -R ProgressionHelperTests -V` (expect failure due to missing helper/export).
+**Step 3: Write minimal implementation**  
+Expose a public API in mod-individual-progression that answers item allowance via its existing DB-backed progression logic (vendors/drops/conditions). Export it for external modules. Update playerbots to call this shared helper instead of maintaining local caps.
+**Step 4: Run the tests to confirm success**  
+`cmake --build build --target mod-individual-progression-tests && ctest -R ProgressionHelperTests -V`.
+**Step 5: Commit**  
+`git add modules/mod-individual-progression/src/IndividualProgression.* modules/mod-individual-progression/tests/ProgressionHelperTests.cpp && git commit -m "feat: share progression item allowance helper"`
+
+### Task 1c: Replace hardcoded expansion gate in playerbots
+**Files:**
+- Modify: `modules/mod-playerbots/src/factory/PlayerbotFactory.cpp`
+- Modify: `modules/mod-playerbots/src/RandomPlayerbotMgr.cpp`
+- Modify: `modules/mod-playerbots/tests/UpgradeLotteryTests.cpp`
+**Step 1: Write the failing test**  
+Add/extend gtests to assert playerbots use the shared progression allowance helper (not hardcoded `IsItemBeyondExpansionLimit`) for gating items; override helper to block a WotLK item at level 60 and ensure it’s rejected even if the old hardcoded limit would allow it.
+**Step 2: Run it to make sure it fails**  
+`cmake --build build --target mod-playerbots-tests && ctest -R UpgradeLotteryTests -V` (expect failure due to hardcoded gate).
+**Step 3: Write minimal implementation**  
+Remove `IsItemBeyondExpansionLimit` checks; call the shared progression helper for expansion/progression gating in vendor selection and upgrade passes.
+**Step 4: Run the tests to confirm success**  
+`cmake --build build --target mod-playerbots-tests && ctest -R UpgradeLotteryTests -V`.
+**Step 5: Commit**  
+`git add modules/mod-playerbots/src/factory/PlayerbotFactory.cpp modules/mod-playerbots/src/RandomPlayerbotMgr.cpp modules/mod-playerbots/tests/UpgradeLotteryTests.cpp && git commit -m "refactor: use shared progression allowance for gear gating"`
+
+### Task 1d: Remove unused vendor helper
+**Files:**
+- Modify: `modules/mod-playerbots/src/RandomItemMgr.h`
+- Modify: `modules/mod-playerbots/src/RandomItemMgr.cpp`
+- Modify: `modules/mod-playerbots/tests/VendorCacheTests.cpp` (if needed)
+**Step 1: Write the failing test**  
+Add/adjust tests to ensure no code relies on `GetBestVendorItem` (or assert its removal). If not referenced, no new test needed; confirm build/tests fail if dangling references exist.
+**Step 2: Run it to make sure it fails**  
+`cmake --build build --target mod-playerbots-tests && ctest -R VendorCacheTests -V` (expect missing symbol if references remain).
+**Step 3: Write minimal implementation**  
+Remove `GetBestVendorItem` declarations/definitions; clean up any dead code paths or references.
+**Step 4: Run the tests to confirm success**  
+`cmake --build build --target mod-playerbots-tests && ctest -R VendorCacheTests -V`.
+**Step 5: Commit**  
+`git add modules/mod-playerbots/src/RandomItemMgr.* modules/mod-playerbots/tests/VendorCacheTests.cpp && git commit -m "chore: remove unused vendor helper"`
+
 ### Task 2: Playerbot configs for XP upgrades and ramp
 **Files:**
 - Modify: `modules/mod-playerbots/conf/playerbots.conf.dist`
@@ -126,6 +174,21 @@ Implement upgrade pass using StatsWeightCalculator, vendor baseline fallback, pr
 `cmake --build build --target mod-playerbots-tests && ctest -R UpgradeLotteryTests -V`.
 **Step 5: Commit**  
 `git add modules/mod-playerbots/src/RandomPlayerbotMgr.* modules/mod-playerbots/src/RandomPlayerbotFactory.cpp modules/mod-playerbots/tests/UpgradeLotteryTests.cpp && git commit -m "feat: add progression-bound xp gear lottery"`
+
+### Task 6d: Score-weighted percentile selection
+**Files:**
+- Modify: `modules/mod-playerbots/src/RandomPlayerbotMgr.cpp`
+- Modify: `modules/mod-playerbots/tests/UpgradeLotteryTests.cpp`
+**Step 1: Write the failing test**  
+Add gtests to cover score-gap scenarios: many similar low-score items plus one high-score outlier; assert that percentile mapping is based on cumulative score/weight (not rank) so the outlier only appears in the top weight slice (e.g., roll 99+ picks it, roll 90 picks a mid-tier).
+**Step 2: Run it to make sure it fails**  
+`cmake --build build --target mod-playerbots-tests && ctest -R UpgradeLotteryTests -V` (expect current rank-based selection to fail spacing expectations).
+**Step 3: Write minimal implementation**  
+Change selection to score-weighted cumulative percentile: compute weights (score or dampened function), build cumulative total, map roll percentile to cumulative weight, and pick the item where cumulative crosses the target; preserve vendor baseline logic and progression gates.
+**Step 4: Run the tests to confirm success**  
+`cmake --build build --target mod-playerbots-tests && ctest -R UpgradeLotteryTests -V`.
+**Step 5: Commit**  
+`git add modules/mod-playerbots/src/RandomPlayerbotMgr.cpp modules/mod-playerbots/tests/UpgradeLotteryTests.cpp && git commit -m "refactor: use weighted percentile for gear selection"`
 
 ### Task 6b: Bracket level-change integration
 **Files:**

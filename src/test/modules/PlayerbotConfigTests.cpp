@@ -63,6 +63,7 @@ TEST_F(PlayerbotConfigTest, DefaultsMatchExpectedValues)
     EXPECT_FALSE(config->IsXpUpgradeEnabled());
     EXPECT_EQ(config->GetXpUpgradeChunk(), 7000u);
     EXPECT_TRUE(config->IsVendorSeedEnabled());
+    EXPECT_FALSE(config->IsUpgradeLoggingEnabled());
     EXPECT_EQ(config->GetProgressionState(), static_cast<uint8>(PROGRESSION_START));
     EXPECT_EQ(config->GetBiSWeeksAtEndgame(), 0u);
 }
@@ -74,6 +75,7 @@ TEST_F(PlayerbotConfigTest, ReadsOverridesFromConfig)
         {"AiPlayerbot.XpUpgradeEnabled", "1"},
         {"AiPlayerbot.XpUpgradeChunk", "9000"},
         {"AiPlayerbot.VendorSeedEnabled", "0"},
+        {"AiPlayerbot.UpgradeLogging", "1"},
         {"AiPlayerbot.ProgressionState", std::to_string(PROGRESSION_AQ)},
         {"AiPlayerbot.BiSWeeksAtEndgame", "6"},
         {"AiPlayerbot.SkipInitialSetup", "1"},
@@ -83,6 +85,7 @@ TEST_F(PlayerbotConfigTest, ReadsOverridesFromConfig)
     EXPECT_TRUE(config->IsXpUpgradeEnabled());
     EXPECT_EQ(config->GetXpUpgradeChunk(), 9000u);
     EXPECT_FALSE(config->IsVendorSeedEnabled());
+    EXPECT_TRUE(config->IsUpgradeLoggingEnabled());
     EXPECT_EQ(config->GetProgressionState(), static_cast<uint8>(PROGRESSION_AQ));
     EXPECT_EQ(config->GetBiSWeeksAtEndgame(), 6u);
 }

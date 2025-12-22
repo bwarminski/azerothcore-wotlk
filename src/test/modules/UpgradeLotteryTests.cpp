@@ -5,6 +5,7 @@
 #include "IndividualProgression.h"
 #include "PlayerbotAIConfig.h"
 #include "PlayerbotTestUtils.h"
+#include "ProgressionConditionProvider.h"
 #include "ProgressionItemRules.h"
 #include "RandomItemMgr.h"
 #include "RandomPlayerbotMgr.h"
@@ -16,10 +17,59 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
+#include <map>
+#include <unordered_set>
+
 using namespace testing;
+
+class UpgradeLotteryTest_Accessor
+{
+public:
+    static size_t SelectWeightedCandidateIndex(std::vector<float> const& cumulativeWeights, float targetWeight)
+    {
+        return RandomPlayerbotMgr::SelectWeightedCandidateIndex(cumulativeWeights, targetWeight);
+    }
+};
 
 namespace
 {
+class TestProgressionConditionProvider : public ProgressionConditionProvider
+{
+public:
+    void BlockItem(uint32 itemId) { blockedItems.insert(itemId); }
+
+    bool IsItemAllowed(Player* /*player*/, uint32 itemId) const override
+    {
+        return blockedItems.find(itemId) == blockedItems.end();
+    }
+
+private:
+    std::unordered_set<uint32> blockedItems;
+};
+
+class CountingScoreProvider : public ItemScoreProvider
+{
+public:
+    float GetScore(Player* /*bot*/, uint32 itemId, int32 randomPropertyId) override
+    {
+        ++callCounts[{itemId, randomPropertyId}];
+        return static_cast<float>(itemId);
+    }
+
+    int GetCallCount(uint32 itemId, int32 randomPropertyId) const
+    {
+        auto it = callCounts.find({itemId, randomPropertyId});
+        if (it == callCounts.end())
+        {
+            return 0;
+        }
+        return it->second;
+    }
+
+private:
+    std::map<std::pair<uint32, int32>, int> callCounts;
+};
+
 class UpgradeLotteryTest : public ::testing::Test
 {
 protected:
@@ -85,6 +135,8 @@ protected:
         sIndividualProgression->enabled = true;
 
         SetProgressionState(PROGRESSION_PRE_TBC);
+        progressionProvider = std::make_shared<TestProgressionConditionProvider>();
+        sIndividualProgression->SetProgressionConditionProvider(progressionProvider);
 
         LoadConfig();
         sRandomItemMgr->ResetVendorEquipmentCache();
@@ -96,12 +148,15 @@ protected:
         PlayerbotTestUtils::RemoveFileIfExists(configPath);
         RestoreItemTemplates();
         sRandomItemMgr->ResetVendorEquipmentCache();
+        sRandomPlayerbotMgr->SetItemScoreProvider(nullptr);
 
         for (auto const& vendorItem : vendorItems)
         {
             sObjectMgr->RemoveVendorItem(vendorItem.first, vendorItem.second, false);
         }
 
+        sIndividualProgression->SetProgressionConditionProvider(nullptr);
+        progressionProvider.reset();
         sIndividualProgression->enabled = originalProgressionEnabled;
 
         IWorld* currentWorld = sWorld.release();
@@ -217,6 +272,14 @@ protected:
         }
     }
 
+    void BlockProgressionItem(uint32 itemId)
+    {
+        if (progressionProvider)
+        {
+            progressionProvider->BlockItem(itemId);
+        }
+    }
+
     std::string configPath;
     IWorld* originalWorld = nullptr;
     NiceMock<WorldMock>* worldMock = nullptr;
@@ -226,6 +289,7 @@ protected:
     std::vector<ItemTemplate*> originalFastTemplates;
     std::vector<std::pair<uint32, uint32>> vendorItems;
     bool originalProgressionEnabled = false;
+    std::shared_ptr<TestProgressionConditionProvider> progressionProvider;
 };
 
 TEST_F(UpgradeLotteryTest, VendorBaselineSkipsProgressionBlockedItems)
@@ -234,6 +298,7 @@ TEST_F(UpgradeLotteryTest, VendorBaselineSkipsProgressionBlockedItems)
     constexpr uint32 ALLOWED_ITEM = 46000;
     constexpr uint32 BLOCKED_ITEM = 46001;
 
+    BlockProgressionItem(BLOCKED_ITEM);
     ClearSlot(EQUIPMENT_SLOT_HEAD);
     StoreArmorTemplate(ALLOWED_ITEM, INVTYPE_HEAD, ITEM_SUBCLASS_ARMOR_MAIL, 60, 100, ITEM_MOD_STRENGTH, 10);
     StoreArmorTemplate(BLOCKED_ITEM, INVTYPE_HEAD, ITEM_SUBCLASS_ARMOR_MAIL, 60, 200, ITEM_MOD_STRENGTH, 200);
@@ -263,6 +328,7 @@ TEST_F(UpgradeLotteryTest, SharedHelperBlocksItemsBelowExpansionIdThreshold)
     constexpr uint32 BLOCKED_ITEM = 22001;
 
     LoadConfig(1);
+    BlockProgressionItem(BLOCKED_ITEM);
 
     ClearSlot(EQUIPMENT_SLOT_HEAD);
     StoreArmorTemplate(ALLOWED_ITEM, INVTYPE_HEAD, ITEM_SUBCLASS_ARMOR_MAIL, 60, 100, ITEM_MOD_STRENGTH, 10);
@@ -325,5 +391,50 @@ TEST_F(UpgradeLotteryTest, WeightedPercentileSelectsOutlierAtTopRolls)
     Item* chestItem = player->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_CHEST);
     ASSERT_NE(chestItem, nullptr);
     EXPECT_EQ(chestItem->GetEntry(), OUTLIER_ENTRY);
+}
+
+TEST_F(UpgradeLotteryTest, CumulativeSelectionMatchesRepresentativeTargets)
+{
+    std::vector<float> cumulativeWeights = {1.0f, 5.0f, 10.0f};
+
+    EXPECT_EQ(UpgradeLotteryTest_Accessor::SelectWeightedCandidateIndex(cumulativeWeights, 0.0f), 0u);
+    EXPECT_EQ(UpgradeLotteryTest_Accessor::SelectWeightedCandidateIndex(cumulativeWeights, 5.0f), 1u);
+    EXPECT_EQ(UpgradeLotteryTest_Accessor::SelectWeightedCandidateIndex(cumulativeWeights, 10.0f), 2u);
+}
+
+TEST_F(UpgradeLotteryTest, ScoreLookupReusesScoresForSameBotState)
+{
+    constexpr uint32 BASE_ENTRY = 70000;
+    constexpr uint32 ENTRY_COUNT = 2;
+
+    ResetItemTemplates();
+    SetProgressionState(PROGRESSION_PRE_TBC);
+    player->SetLevel(60);
+
+    SeedChestItems(BASE_ENTRY, ENTRY_COUNT, 60, 120);
+    sRandomItemMgr->RebuildEquipmentCache();
+    ClearSlot(EQUIPMENT_SLOT_CHEST);
+
+    auto provider = std::make_shared<CountingScoreProvider>();
+    sRandomPlayerbotMgr->SetItemScoreProvider(provider);
+
+    sRandomPlayerbotMgr->RunGearUpgradePass(player,
+        RandomPlayerbotMgr::UpgradeContext{"score-cache-first", 50, false, DEFAULT_MAX_LEVEL});
+
+    EXPECT_EQ(provider->GetCallCount(BASE_ENTRY, 0), 1);
+    EXPECT_EQ(provider->GetCallCount(BASE_ENTRY + 1, 0), 1);
+
+    sRandomPlayerbotMgr->RunGearUpgradePass(player,
+        RandomPlayerbotMgr::UpgradeContext{"score-cache-second", 50, false, DEFAULT_MAX_LEVEL});
+
+    EXPECT_EQ(provider->GetCallCount(BASE_ENTRY, 0), 1);
+    EXPECT_EQ(provider->GetCallCount(BASE_ENTRY + 1, 0), 1);
+
+    SetProgressionState(PROGRESSION_TBC_TIER_4);
+    sRandomPlayerbotMgr->RunGearUpgradePass(player,
+        RandomPlayerbotMgr::UpgradeContext{"score-cache-third", 50, false, DEFAULT_MAX_LEVEL});
+
+    EXPECT_EQ(provider->GetCallCount(BASE_ENTRY, 0), 2);
+    EXPECT_EQ(provider->GetCallCount(BASE_ENTRY + 1, 0), 2);
 }
 } // namespace

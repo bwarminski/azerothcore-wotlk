@@ -41,3 +41,7 @@
 - Task 1b updated: shared progression helper uses module logic; playerbots now call ProgressionItemRules helper instead of hardcoded expansion gate.
 - Task 1d removes GetBestVendorItem and updates vendor cache tests to use GetVendorItems.
 - Task 1b follow-up: IsItemAllowedForProgression now returns true when module disabled (after confirming item template exists); DB-backed condition provider pulls all conditions for the item (no type/value filters) and supports condition references.
+- UpgradeLotteryTests SIGFPE traced to WorldDatabase access in DbProgressionConditionProvider when no connections exist; inject a test ProgressionConditionProvider in UpgradeLotteryTests to avoid DB queries.
+- UpgradeLotteryTests still emit gcda corruption warnings; clean stale gcda files before claiming pristine test output.
+- Task 6f: added cumulative weight selection helper and binary-search lookup in RandomPlayerbotMgr; UpgradeLotteryTests cover representative targets.
+- Task 6g: added item score provider injection plus per-bot-state score lookup in RandomPlayerbotMgr; UpgradeLotteryTests cover cache reuse across passes and progression-state changes.

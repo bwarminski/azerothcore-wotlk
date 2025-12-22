@@ -28,6 +28,47 @@ public:
     {
         return RandomPlayerbotMgr::SelectWeightedCandidateIndex(cumulativeWeights, targetWeight);
     }
+
+    static void AddCurrentBot(ObjectGuid::LowType guid)
+    {
+        if (std::find(sRandomPlayerbotMgr->currentBots.begin(),
+            sRandomPlayerbotMgr->currentBots.end(), guid) == sRandomPlayerbotMgr->currentBots.end())
+        {
+            sRandomPlayerbotMgr->currentBots.push_back(guid);
+        }
+    }
+
+    static void RemoveCurrentBot(ObjectGuid::LowType guid)
+    {
+        sRandomPlayerbotMgr->currentBots.remove(guid);
+    }
+
+    static void RegisterBot(Player* bot)
+    {
+        if (!bot)
+            return;
+
+        sRandomPlayerbotMgr->playerBots[bot->GetGUID()] = bot;
+    }
+
+    static void UnregisterBot(Player* bot)
+    {
+        if (!bot)
+            return;
+
+        sRandomPlayerbotMgr->playerBots.erase(bot->GetGUID());
+    }
+
+    static void ResetUpgradePassCalls(ObjectGuid::LowType guid)
+    {
+        sRandomPlayerbotMgr->upgradePassCalls[guid] = 0;
+    }
+
+    static void ResetUpgradeEpochState(ObjectGuid::LowType guid)
+    {
+        sRandomPlayerbotMgr->eventCache[guid]["upgrade_epoch"] = CachedEvent();
+        sRandomPlayerbotMgr->eventCache[guid]["upgrade_epoch_progression"] = CachedEvent();
+    }
 };
 
 namespace
@@ -121,6 +162,9 @@ protected:
     void TearDown() override
     {
         sRandomPlayerbotMgr->ResetXpForUpgrade(botGuid);
+        UpgradeLotteryTest_Accessor::ResetUpgradeEpochState(botGuid);
+        UpgradeLotteryTest_Accessor::RemoveCurrentBot(botGuid);
+        UpgradeLotteryTest_Accessor::UnregisterBot(player);
         PlayerbotTestUtils::RemoveFileIfExists(configPath);
         RestoreItemTemplates();
         sRandomItemMgr->ResetVendorEquipmentCache();
@@ -144,7 +188,7 @@ protected:
         vendorItems.clear();
     }
 
-    void LoadConfig(uint32 limitGearExpansion = 0)
+    void LoadConfig(uint32 limitGearExpansion = 0, uint32 biSWeeksAtEndgame = 0)
     {
         configPath = PlayerbotTestUtils::CreatePlayerbotConfig({
             {"AiPlayerbot.Enabled", "1"},
@@ -153,6 +197,7 @@ protected:
             {"AiPlayerbot.XpUpgradeChunk", "1000"},
             {"AiPlayerbot.VendorSeedEnabled", "1"},
             {"AiPlayerbot.LimitGearExpansion", std::to_string(limitGearExpansion)},
+            {"AiPlayerbot.BiSWeeksAtEndgame", std::to_string(biSWeeksAtEndgame)},
         });
         sConfigMgr->Configure(configPath, std::vector<std::string>());
         sConfigMgr->LoadAppConfigs();
@@ -375,5 +420,40 @@ TEST_F(UpgradeLotteryTest, CumulativeSelectionMatchesRepresentativeTargets)
     EXPECT_EQ(UpgradeLotteryTest_Accessor::SelectWeightedCandidateIndex(cumulativeWeights, 0.0f), 0u);
     EXPECT_EQ(UpgradeLotteryTest_Accessor::SelectWeightedCandidateIndex(cumulativeWeights, 5.0f), 1u);
     EXPECT_EQ(UpgradeLotteryTest_Accessor::SelectWeightedCandidateIndex(cumulativeWeights, 10.0f), 2u);
+}
+
+TEST_F(UpgradeLotteryTest, EndgameEpochBumpRunsUpgradePassesForEligibleBots)
+{
+    UpgradeLotteryTest_Accessor::RegisterBot(player);
+    UpgradeLotteryTest_Accessor::AddCurrentBot(botGuid);
+    UpgradeLotteryTest_Accessor::ResetUpgradePassCalls(botGuid);
+
+    SetProgressionState(PROGRESSION_NAXX40);
+    player->SetLevel(IP_LEVEL_VANILLA);
+
+    LoadConfig(0, 1);
+    EXPECT_EQ(sRandomPlayerbotMgr->GetUpgradePassCallCount(botGuid), 1u);
+
+    LoadConfig(0, 3);
+    EXPECT_EQ(sRandomPlayerbotMgr->GetUpgradePassCallCount(botGuid), 3u);
+}
+
+TEST_F(UpgradeLotteryTest, EndgameEpochResetsOnProgressionChange)
+{
+    UpgradeLotteryTest_Accessor::RegisterBot(player);
+    UpgradeLotteryTest_Accessor::AddCurrentBot(botGuid);
+    UpgradeLotteryTest_Accessor::ResetUpgradePassCalls(botGuid);
+
+    SetProgressionState(PROGRESSION_NAXX40);
+    player->SetLevel(IP_LEVEL_VANILLA);
+    LoadConfig(0, 1);
+    EXPECT_EQ(sRandomPlayerbotMgr->GetUpgradePassCallCount(botGuid), 1u);
+
+    UpgradeLotteryTest_Accessor::ResetUpgradePassCalls(botGuid);
+    SetProgressionState(PROGRESSION_TBC_TIER_2);
+    player->SetLevel(IP_LEVEL_TBC);
+
+    LoadConfig(0, 2);
+    EXPECT_EQ(sRandomPlayerbotMgr->GetUpgradePassCallCount(botGuid), 2u);
 }
 } // namespace

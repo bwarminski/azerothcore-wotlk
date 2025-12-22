@@ -9,7 +9,7 @@ Reference materials:
 
 **Goal:** Add vendor-seeded baseline gear and XP-driven percentile upgrades for randombots, enforced by individual progression rules and a configurable weekly BiS ramp. Bots always meet vendor baseline, upgrade candidates respect progression (using DB-driven conditions from the individual progression module), and odds ramp is global-config-driven. Remove the legacy progression caps conf to avoid conflicting sources.
 
-**Architecture:** Build a vendor gear cache; store per-bot XP since last upgrade; on configurable XP steps, level-ups, and endgame week changes, roll a percentile per slot across all suitable gear (up to bot level and progression) distributed by gear score, pick the nearest percentile item, and equip if it beats current; otherwise fall back to vendor baseline if better. Progression enforcement uses a public helper in mod-individual-progression backed by DB conditions (progression quests, vendor/drop gating) with a test seam; retire static caps/config entirely. Optimize upgrade selection by using cumulative weight + binary search and cache score computations per (class/spec/level/progression) to avoid repeated StatWeight calculations. A global weeks-at-endgame config lifts percentile floors and over-cap odds for max-level bots at progression cap. Existing auto-upgrade paths are gated by the new mode. Configs live in playerbots.conf.
+**Architecture:** Build a vendor gear cache; store per-bot XP since last upgrade; on configurable XP steps, level-ups, and endgame week changes, roll a percentile per slot across all suitable gear (up to bot level and progression) distributed by gear score, pick the nearest percentile item, and equip if it beats current; otherwise fall back to vendor baseline if better. Progression enforcement uses a public helper in mod-individual-progression backed by DB conditions (progression quests, vendor/drop gating) with a test seam; retire static caps/config entirely. Optimize upgrade selection by using cumulative weight + binary search; keep StatWeight calculations live (no cross-pass caching) due to dependence on current ratings/auras/skills. A global weeks-at-endgame config lifts percentile floors and over-cap odds for max-level bots at progression cap. Existing auto-upgrade paths are gated by the new mode. Configs live in playerbots.conf.
 
 **Tech Stack:** AzerothCore C++ modules (mod-playerbots, mod-individual-progression), CMake, (g)test harness for new unit/logic tests.
 
@@ -222,21 +222,20 @@ Compute cumulative weights once, then use `std::lower_bound` on the cumulative a
 **Step 5: Commit**  
 `git add modules/mod-playerbots/src/RandomPlayerbotMgr.cpp modules/mod-playerbots/tests/UpgradeLotteryTests.cpp && git commit -m "perf: binary search cumulative weights for gear selection"`
 
-### Task 6g: Cache score calculations per bot state
+### Task 6g: Keep selection fast without cross-pass score caching
 **Files:**
 - Modify: `modules/mod-playerbots/src/RandomPlayerbotMgr.cpp`
-- Add (for test seam): `modules/mod-playerbots/src/factory/StatsWeightCache.h/.cpp` or integrate into `RandomPlayerbotMgr`
 - Modify: `modules/mod-playerbots/tests/UpgradeLotteryTests.cpp`
 **Step 1: Write the failing test**  
-Add gtest with a test double for the score provider (e.g., injectable interface) that counts `CalculateItem` calls; assert that repeated candidate evaluation for the same (class/spec/level/progression) uses cached scores (call count == 1 per item) and that a different spec/level/progression invalidates or keys separately.
+Adjust tests to remove score-cache expectations; keep coverage for cumulative selection and progression gating. If adding a per-pass calculator reuse, assert functional behavior stays the same.
 **Step 2: Run it to make sure it fails**  
-`cmake --build build --target mod-playerbots-tests && ctest -R UpgradeLotteryTests -V` (expect failure without caching/injection).
+`cmake --build build --target mod-playerbots-tests && ctest -R UpgradeLotteryTests -V` (expect failures while tests still expect caching hooks).
 **Step 3: Write minimal implementation**  
-Introduce a cache keyed by (class, spec tab, level, progression state, itemId/randomProp) storing computed scores. Allow injection of a score provider for tests; production uses `StatsWeightCalculator`. Clear or bypass cache when bot state changes. Use the cache in upgrade pass to avoid recomputation.
+Remove the cross-pass score cache and provider injection; call `StatsWeightCalculator` directly for scoring (optionally reuse a single calculator per pass with `Reset()`). Keep per-pass duplicate filtering (`scoredCandidates`) and the cumulative-weight binary search from 6f.
 **Step 4: Run the tests to confirm success**  
 `cmake --build build --target mod-playerbots-tests && ctest -R UpgradeLotteryTests -V`.
 **Step 5: Commit**  
-`git add modules/mod-playerbots/src/RandomPlayerbotMgr.cpp modules/mod-playerbots/src/factory/StatsWeightCache.* modules/mod-playerbots/tests/UpgradeLotteryTests.cpp && git commit -m "perf: cache gear scores per bot state"`
+`git add modules/mod-playerbots/src/RandomPlayerbotMgr.cpp modules/mod-playerbots/tests/UpgradeLotteryTests.cpp && git commit -m "perf: keep weighted selection fast without stale score caching"`
 
 ### Task 6e: Diagnostic logging for gear rolls
 **Files:**

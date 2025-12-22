@@ -44,4 +44,4 @@
 - UpgradeLotteryTests SIGFPE traced to WorldDatabase access in DbProgressionConditionProvider when no connections exist; inject a test ProgressionConditionProvider in UpgradeLotteryTests to avoid DB queries.
 - UpgradeLotteryTests still emit gcda corruption warnings; clean stale gcda files before claiming pristine test output.
 - Task 6f: added cumulative weight selection helper and binary-search lookup in RandomPlayerbotMgr; UpgradeLotteryTests cover representative targets.
-- Task 6g: added item score provider injection plus per-bot-state score lookup in RandomPlayerbotMgr; UpgradeLotteryTests cover cache reuse across passes and progression-state changes.
+- Task 6g updated: removed cross-pass score caching and provider injection; RandomPlayerbotMgr uses StatsWeightCalculator directly and tests drop cache expectations.

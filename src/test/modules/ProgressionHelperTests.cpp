@@ -17,6 +17,7 @@
 
 #include <map>
 #include <memory>
+#include <vector>
 
 using namespace testing;
 
@@ -417,5 +418,34 @@ TEST_F(ProgressionHelperTest, SharedHelperAllowsItemsWhenModuleDisabled)
     sIndividualProgression->enabled = false;
 
     EXPECT_TRUE(IsItemAllowedForProgression(player, ICC_ITEM));
+}
+
+TEST_F(ProgressionHelperTest, LoadsConditionsOnceAndReturnsEmptyForMissingItems)
+{
+    constexpr uint32 ITEM_WITH_CONDITION = 90000;
+    constexpr uint32 ITEM_WITHOUT_CONDITION = 90001;
+
+    int loadCount = 0;
+    ProgressionConditionStore store([&loadCount]()
+    {
+        ++loadCount;
+        std::vector<Condition> rows;
+        Condition condition{};
+        condition.SourceEntry = ITEM_WITH_CONDITION;
+        rows.push_back(condition);
+        return rows;
+    });
+
+    ConditionList const& first = store.GetConditionsForItem(ITEM_WITH_CONDITION);
+    EXPECT_EQ(loadCount, 1);
+    EXPECT_EQ(first.size(), 1u);
+
+    ConditionList const& second = store.GetConditionsForItem(ITEM_WITH_CONDITION);
+    EXPECT_EQ(loadCount, 1);
+    EXPECT_EQ(second.size(), 1u);
+
+    ConditionList const& missing = store.GetConditionsForItem(ITEM_WITHOUT_CONDITION);
+    EXPECT_EQ(loadCount, 1);
+    EXPECT_TRUE(missing.empty());
 }
 } // namespace

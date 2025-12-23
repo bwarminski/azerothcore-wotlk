@@ -46,3 +46,4 @@
 - Task 6f: added cumulative weight selection helper and binary-search lookup in RandomPlayerbotMgr; UpgradeLotteryTests cover representative targets.
 - Task 6g updated: removed cross-pass score caching and provider injection; RandomPlayerbotMgr uses StatsWeightCalculator directly and tests drop cache expectations.
 - Task 8 epoch handling: added per-bot upgrade epoch tracking + config-load handling for BiSWeeksAtEndgame bumps; used numeric progression thresholds (PRE_TBC=8, TBC_TIER_5=13, caps 60/70) in RandomPlayerbotMgr to avoid enum name conflicts from including IndividualProgression.h.
+- Task 10 WIP: added ProgressionConditionStore one-time condition load + cache test; gcda warnings still require cleanup for pristine test output.

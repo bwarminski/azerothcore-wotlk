@@ -286,7 +286,23 @@ Read `BiSWeeksAtEndgame` config; apply floor/over-cap calculations only when at 
 **Step 5: Commit**  
 `git add modules/mod-playerbots/src/PlayerbotAIConfig.* modules/mod-playerbots/src/RandomPlayerbotMgr.cpp modules/mod-playerbots/tests/BiSRampTests.cpp && git commit -m "feat: add global bis ramp config"`
 
-### Task 8: Integration docs and verification
+### Task 8: Endgame epoch upgrade passes
+**Files:**
+- Modify: `modules/mod-playerbots/src/RandomPlayerbotMgr.cpp`
+- Modify: `modules/mod-playerbots/src/PlayerbotAIConfig.cpp` (if storing current epoch)
+- Modify: `src/test/modules/UpgradeLotteryTests.cpp` (or new test file)
+**Step 1: Write the failing test**  
+Add gtest(s) covering epoch-based catch-up: when `BiSWeeksAtEndgame` increases between runs, bots at the max level for their current progression state (60/70/80) run exactly one upgrade pass per epoch delta; ineligible bots do nothing. Advancing a bot’s progression resets its `LastUpgradeEpoch` so the next eligible epoch uses the new cap.
+**Step 2: Run it to make sure it fails**  
+`cmake --build build --target mod-playerbots-tests && ctest -R UpgradeLotteryTests -V` (or specific epoch test) expecting missing tracking/hooks.
+**Step 3: Write minimal implementation**  
+Track current epoch as `BiSWeeksAtEndgame`; store per-bot `LastUpgradeEpoch` in the bot value store; reset it when progression state advances. On config load/reload, detect epoch change and for each eligible endgame bot (max level for its progression), run one upgrade pass per epoch delta, then set `LastUpgradeEpoch = currentEpoch`. No admin command for now.
+**Step 4: Run the tests to confirm success**  
+`cmake --build build --target mod-playerbots-tests && ctest -R UpgradeLotteryTests -V`.
+**Step 5: Commit**  
+`git add modules/mod-playerbots/src/RandomPlayerbotMgr.cpp modules/mod-playerbots/src/PlayerbotAIConfig.cpp src/test/modules/UpgradeLotteryTests.cpp && git commit -m "feat: run endgame upgrade passes on epoch bumps"`
+
+### Task 9: Integration docs and verification
 **Files:**
 - Add: `doc/CHANGELOG-playerbots-xp-upgrade.md`
 - Modify: `modules/mod-playerbots/conf/playerbots.conf.dist` (notes)

@@ -3047,6 +3047,11 @@ void Player::DestroyItem(uint8 bag, uint8 slot, bool update)
     if (pItem)
     {
         LOG_DEBUG("entities.player.items", "STORAGE: DestroyItem bag = {}, slot = {}, item = {}", bag, slot, pItem->GetEntry());
+#ifdef ACORE_DEBUG
+        LOG_DEBUG("entities.player.items", "DestroyItem details item_ptr={} entry={} owner={} state={} inQueue={}",
+            static_cast<void*>(pItem), pItem->GetEntry(), pItem->GetOwnerGUID().ToString(),
+            static_cast<int32>(pItem->GetState()), pItem->IsInUpdateQueue());
+#endif
         // Also remove all contained items if the item is a bag.
         // This if () prevents item saving crashes if the condition for a bag to be empty before being destroyed was bypassed somehow.
         if (pItem->IsNotEmptyBag())
@@ -7339,6 +7344,12 @@ void Player::_SaveInventory(CharacterDatabaseTransaction trans)
                 ObjectGuid::LowType bagTestGUID = 0;
                 if (Item* test2 = GetItemByPos(INVENTORY_SLOT_BAG_0, item->GetBagSlot()))
                     bagTestGUID = test2->GetGUID().GetCounter();
+#ifdef ACORE_DEBUG
+                LOG_DEBUG("entities.player",
+                    "SaveInventory invalid position: player={} item_ptr={} container_ptr={} bag_guid={} bag={} slot={} entry={} state={} queueIndex={}",
+                    lowGuid, static_cast<void*>(item), static_cast<void*>(container), bag_guid, item->GetBagSlot(),
+                    item->GetSlot(), item->GetEntry(), static_cast<int32>(item->GetState()), i);
+#endif
                 LOG_ERROR("entities.player", "Player(GUID: {} Name: {})::_SaveInventory - the bag({}) and slot({}) values for the item {} (state {}) are incorrect, the player doesn't have an item at that position!",
                           lowGuid, GetName(), item->GetBagSlot(), item->GetSlot(), item->GetGUID().ToString(), (int32)item->GetState());
                 // according to the test that was just performed nothing should be in this slot, delete
@@ -7360,6 +7371,12 @@ void Player::_SaveInventory(CharacterDatabaseTransaction trans)
             }
             else if (test != item)
             {
+#ifdef ACORE_DEBUG
+                LOG_DEBUG("entities.player",
+                    "SaveInventory mismatch: player={} item_ptr={} test_ptr={} container_ptr={} bag_guid={} bag={} slot={} entry={} state={} queueIndex={}",
+                    lowGuid, static_cast<void*>(item), static_cast<void*>(test), static_cast<void*>(container), bag_guid,
+                    item->GetBagSlot(), item->GetSlot(), item->GetEntry(), static_cast<int32>(item->GetState()), i);
+#endif
                 LOG_ERROR("entities.player", "Player(GUID: {} Name: {})::_SaveInventory - the bag({}) and slot({}) values for the item ({}) are incorrect, the item ({}) is there instead!",
                           lowGuid, GetName(), item->GetBagSlot(), item->GetSlot(), item->GetGUID().ToString(), test->GetGUID().ToString());
                 // save all changes to the item...

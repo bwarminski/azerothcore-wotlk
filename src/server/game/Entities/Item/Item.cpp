@@ -1,3 +1,5 @@
+// ABOUTME: Implements item behavior, state transitions, and persistence.
+// ABOUTME: Manages inventory update queue interactions for items.
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
@@ -28,6 +30,10 @@
 #include "StringConvert.h"
 #include "Tokenize.h"
 #include "WorldPacket.h"
+#ifdef ACORE_DEBUG
+#include <boost/stacktrace.hpp>
+#endif
+#include <algorithm>
 
 void AddItemsSetItem(Player* player, Item* item)
 {
@@ -410,7 +416,17 @@ void Item::SaveToDB(CharacterDatabaseTransaction trans)
             break;
     }
 
+#ifdef ACORE_DEBUG
+    LOG_DEBUG("entities.player.items", "Item::SaveToDB pre-unchanged item_ptr={} entry={} owner={} state={} inQueue={} queuePos={}",
+        static_cast<void*>(this), GetEntry(), GetOwnerGUID().ToString(), static_cast<int32>(uState),
+        IsInUpdateQueue(), uQueuePos);
+#endif
     SetState(ITEM_UNCHANGED);
+#ifdef ACORE_DEBUG
+    LOG_DEBUG("entities.player.items", "Item::SaveToDB post-unchanged item_ptr={} entry={} owner={} state={} inQueue={} queuePos={}",
+        static_cast<void*>(this), GetEntry(), GetOwnerGUID().ToString(), static_cast<int32>(uState),
+        IsInUpdateQueue(), uQueuePos);
+#endif
 
     if (!isInTransaction)
         CharacterDatabase.CommitTransaction(trans);
@@ -718,6 +734,11 @@ void Item::SetState(ItemUpdateState state, Player* forplayer)
         // pretend the item never existed
         if (forplayer)
         {
+#ifdef ACORE_DEBUG
+            LOG_DEBUG("entities.player.items", "Item::SetState remove new item_ptr={} entry={} owner={} state={} inQueue={} queuePos={}",
+                static_cast<void*>(this), GetEntry(), GetOwnerGUID().ToString(), static_cast<int32>(uState),
+                IsInUpdateQueue(), uQueuePos);
+#endif
             RemoveFromUpdateQueueOf(forplayer);
             forplayer->DeleteRefundReference(GetGUID());
         }
@@ -736,16 +757,39 @@ void Item::SetState(ItemUpdateState state, Player* forplayer)
     {
         // unset in queue
         // the item must be removed from the queue manually
-        uQueuePos = -1;
+        bool inOwnerQueue = false;
+        if (Player* owner = GetOwner())
+        {
+            auto& updateQueue = owner->GetItemUpdateQueue();
+            auto existing = std::find(updateQueue.begin(), updateQueue.end(), this);
+            if (existing != updateQueue.end())
+            {
+                inOwnerQueue = true;
+#ifdef ACORE_DEBUG
+                std::ostringstream ss;
+                ss << boost::stacktrace::stacktrace();
+                LOG_WARN("entities.player.items",
+                    "Item::SetState unchanged while still in owner queue item_ptr={} entry={} owner={} state={} queuePos={} existingIndex={} stack:\n{}",
+                    static_cast<void*>(this), GetEntry(), GetOwnerGUID().ToString(), static_cast<int32>(uState), uQueuePos,
+                    std::distance(updateQueue.begin(), existing), ss.str());
+#endif
+            }
+        }
+#ifdef ACORE_DEBUG
+        if (IsInUpdateQueue())
+        {
+            LOG_DEBUG("entities.player.items", "Item::SetState unchanged while in queue item_ptr={} entry={} owner={} state={} queuePos={}",
+                static_cast<void*>(this), GetEntry(), GetOwnerGUID().ToString(), static_cast<int32>(uState), uQueuePos);
+        }
+#endif
+        if (!inOwnerQueue)
+            uQueuePos = -1;
         uState = ITEM_UNCHANGED;
     }
 }
 
 void Item::AddToUpdateQueueOf(Player* player)
 {
-    if (IsInUpdateQueue())
-        return;
-
     ASSERT(player);
 
     if (player->GetGUID() != GetOwnerGUID())
@@ -757,25 +801,84 @@ void Item::AddToUpdateQueueOf(Player* player)
     if (player->m_itemUpdateQueueBlocked)
         return;
 
+    auto existing = std::find(player->m_itemUpdateQueue.begin(), player->m_itemUpdateQueue.end(), this);
+    if (existing != player->m_itemUpdateQueue.end())
+    {
+        uQueuePos = static_cast<int32>(std::distance(player->m_itemUpdateQueue.begin(), existing));
+#ifdef ACORE_DEBUG
+        LOG_DEBUG("entities.player.items",
+            "Item::AddToUpdateQueueOf duplicate item_ptr={} entry={} owner={} player={} state={} queuePos={}",
+            static_cast<void*>(this), GetEntry(), GetOwnerGUID().ToString(), player->GetGUID().ToString(),
+            static_cast<int32>(GetState()), uQueuePos);
+#endif
+        return;
+    }
+#ifdef ACORE_DEBUG
+    LOG_DEBUG("entities.player.items", "Item::AddToUpdateQueueOf item_ptr={} entry={} owner={} player={} state={}",
+        static_cast<void*>(this), GetEntry(), GetOwnerGUID().ToString(), player->GetGUID().ToString(),
+        static_cast<int32>(GetState()));
+#endif
+
+    if (IsInUpdateQueue())
+        return;
+
     player->m_itemUpdateQueue.push_back(this);
     uQueuePos = player->m_itemUpdateQueue.size() - 1;
 }
 
 void Item::RemoveFromUpdateQueueOf(Player* player)
 {
-    if (!IsInUpdateQueue())
-        return;
-
     ASSERT(player);
 
-    if (player->GetGUID() != GetOwnerGUID())
+    if (player->m_itemUpdateQueueBlocked)
     {
-        LOG_DEBUG("entities.player.items", "Item::RemoveFromUpdateQueueOf - Owner's guid ({}) and player's guid ({}) don't match!", GetOwnerGUID().ToString(), player->GetGUID().ToString());
+#ifdef ACORE_DEBUG
+        LOG_DEBUG("entities.player.items", "Item::RemoveFromUpdateQueueOf blocked item_ptr={} entry={} owner={} player={} state={} queuePos={}",
+            static_cast<void*>(this), GetEntry(), GetOwnerGUID().ToString(), player->GetGUID().ToString(),
+            static_cast<int32>(GetState()), uQueuePos);
+#endif
         return;
     }
 
-    if (player->m_itemUpdateQueueBlocked)
+    auto& updateQueue = player->m_itemUpdateQueue;
+
+    if (player->GetGUID() != GetOwnerGUID())
+    {
+        auto existing = std::find(updateQueue.begin(), updateQueue.end(), this);
+        if (existing != updateQueue.end())
+        {
+            *existing = nullptr;
+#ifdef ACORE_DEBUG
+            LOG_WARN("entities.player.items",
+                "Item::RemoveFromUpdateQueueOf cleared mismatched owner entry item_ptr={} entry={} owner={} player={} state={} existingIndex={}",
+                static_cast<void*>(this), GetEntry(), GetOwnerGUID().ToString(), player->GetGUID().ToString(),
+                static_cast<int32>(GetState()), std::distance(updateQueue.begin(), existing));
+#endif
+        }
         return;
+    }
+
+    if (!IsInUpdateQueue())
+    {
+        auto existing = std::find(updateQueue.begin(), updateQueue.end(), this);
+        if (existing != updateQueue.end())
+        {
+            *existing = nullptr;
+#ifdef ACORE_DEBUG
+            LOG_WARN("entities.player.items",
+                "Item::RemoveFromUpdateQueueOf repaired stale entry item_ptr={} entry={} owner={} player={} state={} existingIndex={}",
+                static_cast<void*>(this), GetEntry(), GetOwnerGUID().ToString(), player->GetGUID().ToString(),
+                static_cast<int32>(GetState()), std::distance(updateQueue.begin(), existing));
+#endif
+        }
+        return;
+    }
+
+#ifdef ACORE_DEBUG
+    LOG_DEBUG("entities.player.items", "Item::RemoveFromUpdateQueueOf item_ptr={} entry={} owner={} player={} state={}",
+        static_cast<void*>(this), GetEntry(), GetOwnerGUID().ToString(), player->GetGUID().ToString(),
+        static_cast<int32>(GetState()));
+#endif
 
     player->m_itemUpdateQueue[uQueuePos] = nullptr;
     uQueuePos = -1;

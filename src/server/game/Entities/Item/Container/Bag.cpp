@@ -1,3 +1,5 @@
+// ABOUTME: Implements bag container behavior and storage for items.
+// ABOUTME: Handles bag lifecycle and contained item cleanup.
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
@@ -37,6 +39,25 @@ Bag::~Bag()
     for (uint8 i = 0; i < MAX_BAG_SIZE; ++i)
         if (Item* item = m_bagslot[i])
         {
+#ifdef ACORE_DEBUG
+            int32 queueIndex = -1;
+            if (Player* owner = item->GetOwner())
+            {
+                auto& updateQueue = owner->GetItemUpdateQueue();
+                for (std::size_t idx = 0; idx < updateQueue.size(); ++idx)
+                {
+                    if (updateQueue[idx] == item)
+                    {
+                        queueIndex = static_cast<int32>(idx);
+                        break;
+                    }
+                }
+            }
+            LOG_DEBUG("entities.player.items",
+                "Bag::~Bag deleting item_ptr={} entry={} owner={} inQueue={} queueIndex={} bag_entry={} bag_slot={} item_slot={}",
+                static_cast<void*>(item), item->GetEntry(), item->GetOwnerGUID().ToString(), item->IsInUpdateQueue(),
+                queueIndex, GetEntry(), GetBagSlot(), item->GetSlot());
+#endif
             if (item->IsInWorld())
             {
                 LOG_FATAL("entities.item", "Item {} (slot {}, bag slot {}) in bag {} (slot {}, bag slot {}, m_bagslot {}) is to be deleted but is still in world.",

@@ -1,3 +1,5 @@
+// ABOUTME: Persists player inventory, storage, and item state transitions.
+// ABOUTME: Implements inventory save, load, and item destruction workflows.
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
@@ -3051,6 +3053,18 @@ void Player::DestroyItem(uint8 bag, uint8 slot, bool update)
         LOG_DEBUG("entities.player.items", "DestroyItem details item_ptr={} entry={} owner={} state={} inQueue={}",
             static_cast<void*>(pItem), pItem->GetEntry(), pItem->GetOwnerGUID().ToString(),
             static_cast<int32>(pItem->GetState()), pItem->IsInUpdateQueue());
+        int32 queueIndex = -1;
+        auto& updateQueue = GetItemUpdateQueue();
+        for (std::size_t idx = 0; idx < updateQueue.size(); ++idx)
+        {
+            if (updateQueue[idx] == pItem)
+            {
+                queueIndex = static_cast<int32>(idx);
+                break;
+            }
+        }
+        LOG_DEBUG("entities.player.items", "DestroyItem queue lookup item_ptr={} queueIndex={} queueBlocked={}",
+            static_cast<void*>(pItem), queueIndex, m_itemUpdateQueueBlocked);
 #endif
         // Also remove all contained items if the item is a bag.
         // This if () prevents item saving crashes if the condition for a bag to be empty before being destroyed was bypassed somehow.

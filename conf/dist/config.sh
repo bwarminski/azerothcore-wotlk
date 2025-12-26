@@ -61,7 +61,7 @@ MTHREADS=${MTHREADS:-0}
 # enable/disable warnings during compilation
 CWARNINGS=ON
 # enable/disable some debug informations ( it's not a debug compilation )
-CDEBUG=OFF
+CDEBUG=ON
 # specify compilation type:
 # * Release: high optimization level, no debug info, code or asserts.
 # * Debug: No optimization, asserts enabled, [custom debug (output) code enabled],
@@ -69,7 +69,8 @@ CDEBUG=OFF
 #    debugger and have address to source-file:line-number translation).
 # * RelWithDebInfo: optimized, *with* debug info, but no debug (output) code or asserts.
 # * MinSizeRel: same as Release but optimizing for size rather than speed.
-CTYPE=${CTYPE:-Release}
+CTYPE=${CTYPE:-RelWithDebInfo}
+# CTYPE=${CTYPE:-Debug}
 
 # compile scripts
 CSCRIPTS=${CSCRIPTS:-static}
@@ -101,6 +102,7 @@ CBUILD_TOOLS_LIST=${CBUILD_TOOLS_LIST:-''}
 # example:  CCUSTOMOPTIONS=" -DWITH_PERFTOOLS=ON
 #
 CCUSTOMOPTIONS=${CCUSTOMOPTIONS:-''}
+#CCUSTOMOPTIONS="${CCUSTOMOPTIONS:-} -DWITH_COREDEBUG=1"
 
 # Enable ccache to speedup
 # recompilations

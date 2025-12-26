@@ -327,3 +327,23 @@ From repo root: `cmake -S . -B build` (if not already), then `cmake --build buil
 `cmake --build build --target mod-individual-progression-tests mod-playerbots-tests` then `ctest -R "ProgressionHelperTests|PlayerbotConfigTests|VendorCacheTests|XpTrackingTests|XpHookTests|UpgradeLotteryTests|BiSRampTests|PlayerbotDocsTests" -V` in `build`.
 **Step 3: Optional in-game spot check (manual)**  
 Enable `AiPlayerbot.XpUpgradeEnabled=1`, set `XpUpgradeChunk`, `ProgressionState`, `BiSWeeksAtEndgame`, spawn a bot and grant XP/level-up to observe gear changes. Verify vendor baseline applies and percentile upgrades respect progression.
+
+### Task 10: Optimize progression condition caching and debug build config
+**Files:**
+- Modify: `modules/mod-individual-progression/src/IndividualProgression.cpp`
+- Modify: `modules/mod-individual-progression/src/IndividualProgression.h` (if needed)
+- Add (optional): synchronization primitive include (e.g., `<mutex>`)
+- Modify: `src/test/modules/ProgressionHelperTests.cpp`
+**Step 1: Write the failing test**  
+Add/adjust gtests to assert that condition lookup caches are populated on first miss and reused for subsequent calls without per-item DB hits. Include a concurrency-safe check if feasible (single-threaded test is fine as long as thread-safety is enforced in code). Verify that condition loading succeeds for items with and without condition rows (empty cache entry permitted).
+**Step 2: Run it to make sure it fails**  
+`cmake --build build --target mod-individual-progression-tests && ctest -R ProgressionHelperTests -V` (expect failure due to per-item queries/no shared cache).
+**Step 3: Write minimal implementation**  
+Replace per-item point queries with a one-time full-table load on first cache miss: load all `conditions` rows into an in-memory map keyed by `SourceEntry`, guarded by a mutex to handle concurrent access. Subsequent lookups should use the in-memory map only. Ensure thread safety and avoid repeated full scans. Keep behavior identical for items without rows (allowed unless progression blocks).
+**Step 4: Run the tests to confirm success**  
+`cmake --build build --target mod-individual-progression-tests && ctest -R ProgressionHelperTests -V`.
+**Step 5: Commit**  
+`git add modules/mod-individual-progression/src/IndividualProgression.* src/test/modules/ProgressionHelperTests.cpp && git commit -m "perf: cache progression conditions with one-time load"`
+
+### Debug build note
+- For smoke debugging, build worldserver with debug symbols: `cd ~/azerothcore && ./acore.sh compiler build -DCMAKE_BUILD_TYPE=Debug`.

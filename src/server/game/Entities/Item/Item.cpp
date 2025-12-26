@@ -285,6 +285,24 @@ Item::Item()
     m_paidExtendedCost = 0;
 }
 
+Item::~Item()
+{
+#ifdef ACORE_DEBUG
+    if (Player* owner = GetOwner())
+    {
+        auto& updateQueue = owner->GetItemUpdateQueue();
+        auto existing = std::find(updateQueue.begin(), updateQueue.end(), this);
+        if (existing != updateQueue.end())
+        {
+            LOG_WARN("entities.player.items",
+                "Item::~Item deleted while still queued item_ptr={} entry={} owner={} state={} queueIndex={}",
+                static_cast<void*>(this), GetEntry(), GetOwnerGUID().ToString(), static_cast<int32>(GetState()),
+                std::distance(updateQueue.begin(), existing));
+        }
+    }
+#endif
+}
+
 bool Item::Create(ObjectGuid::LowType guidlow, uint32 itemid, Player const* owner)
 {
     Object::_Create(guidlow, 0, HighGuid::Item);

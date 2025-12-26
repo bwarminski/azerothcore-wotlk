@@ -1,3 +1,5 @@
+// ABOUTME: Declares item state, ownership, and persistence interfaces.
+// ABOUTME: Defines item behavior helpers and container interactions.
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
@@ -223,6 +225,7 @@ public:
     Item* CloneItem(uint32 count, Player const* player = nullptr) const;
 
     Item();
+    virtual ~Item();
 
     virtual bool Create(ObjectGuid::LowType guidlow, uint32 itemid, Player const* owner);
 

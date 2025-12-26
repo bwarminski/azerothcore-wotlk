@@ -7350,6 +7350,41 @@ void Player::_SaveInventory(CharacterDatabaseTransaction trans)
         LOG_DEBUG("entities.player", "SaveInventory queue entry: player={} queueIndex={} item_ptr={}",
             lowGuid, i, static_cast<void*>(item));
 #endif
+        bool itemTracked = false;
+        for (uint16 slot = PLAYER_SLOT_START; slot < PLAYER_SLOT_END; ++slot)
+        {
+            Item* slotItem = m_items[slot];
+            if (!slotItem)
+                continue;
+            if (slotItem == item)
+            {
+                itemTracked = true;
+                break;
+            }
+            if (Bag* bag = slotItem->ToBag())
+            {
+                for (uint32 bagSlot = 0; bagSlot < bag->GetBagSize(); ++bagSlot)
+                {
+                    if (bag->GetItemByPos(static_cast<uint8>(bagSlot)) == item)
+                    {
+                        itemTracked = true;
+                        break;
+                    }
+                }
+                if (itemTracked)
+                    break;
+            }
+        }
+        if (!itemTracked)
+        {
+#ifdef ACORE_DEBUG
+            LOG_WARN("entities.player",
+                "SaveInventory stale queue entry: player={} queueIndex={} item_ptr={}",
+                lowGuid, i, static_cast<void*>(item));
+#endif
+            m_itemUpdateQueue[i] = nullptr;
+            continue;
+        }
 
         Bag* container = item->GetContainer();
         ObjectGuid::LowType bag_guid = container ? container->GetGUID().GetCounter() : 0;

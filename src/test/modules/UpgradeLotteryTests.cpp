@@ -406,7 +406,7 @@ TEST_F(UpgradeLotteryTest, WeightedPercentileSelectsOutlierAtTopRolls)
     ClearSlot(EQUIPMENT_SLOT_CHEST);
 
     sRandomPlayerbotMgr->RunGearUpgradePass(player,
-        RandomPlayerbotMgr::UpgradeContext{"weighted-top", 99, false, DEFAULT_MAX_LEVEL});
+        RandomPlayerbotMgr::UpgradeContext{"weighted-top", 100, false, DEFAULT_MAX_LEVEL});
 
     Item* chestItem = player->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_CHEST);
     ASSERT_NE(chestItem, nullptr);
@@ -415,10 +415,12 @@ TEST_F(UpgradeLotteryTest, WeightedPercentileSelectsOutlierAtTopRolls)
 
 TEST_F(UpgradeLotteryTest, CumulativeSelectionMatchesRepresentativeTargets)
 {
-    std::vector<float> cumulativeWeights = {1.0f, 5.0f, 10.0f};
+    std::vector<float> cumulativeWeights = {1.0f, 4.0f, 10.0f};
 
     EXPECT_EQ(UpgradeLotteryTest_Accessor::SelectWeightedCandidateIndex(cumulativeWeights, 0.0f), 0u);
-    EXPECT_EQ(UpgradeLotteryTest_Accessor::SelectWeightedCandidateIndex(cumulativeWeights, 5.0f), 1u);
+    EXPECT_EQ(UpgradeLotteryTest_Accessor::SelectWeightedCandidateIndex(cumulativeWeights, 1.6f), 0u);
+    EXPECT_EQ(UpgradeLotteryTest_Accessor::SelectWeightedCandidateIndex(cumulativeWeights, 3.0f), 1u);
+    EXPECT_EQ(UpgradeLotteryTest_Accessor::SelectWeightedCandidateIndex(cumulativeWeights, 6.0f), 1u);
     EXPECT_EQ(UpgradeLotteryTest_Accessor::SelectWeightedCandidateIndex(cumulativeWeights, 10.0f), 2u);
 }
 

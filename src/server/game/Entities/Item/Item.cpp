@@ -836,6 +836,14 @@ void Item::RemoveFromUpdateQueueOf(Player* player)
         LOG_DEBUG("entities.player.items", "Item::RemoveFromUpdateQueueOf blocked item_ptr={} entry={} owner={} player={} state={} queuePos={}",
             static_cast<void*>(this), GetEntry(), GetOwnerGUID().ToString(), player->GetGUID().ToString(),
             static_cast<int32>(GetState()), uQueuePos);
+        auto existing = std::find(player->m_itemUpdateQueue.begin(), player->m_itemUpdateQueue.end(), this);
+        if (existing != player->m_itemUpdateQueue.end())
+        {
+            LOG_WARN("entities.player.items",
+                "Item::RemoveFromUpdateQueueOf blocked while queued item_ptr={} entry={} owner={} player={} state={} existingIndex={}",
+                static_cast<void*>(this), GetEntry(), GetOwnerGUID().ToString(), player->GetGUID().ToString(),
+                static_cast<int32>(GetState()), std::distance(player->m_itemUpdateQueue.begin(), existing));
+        }
 #endif
         return;
     }

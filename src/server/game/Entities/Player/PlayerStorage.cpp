@@ -7332,6 +7332,10 @@ void Player::_SaveInventory(CharacterDatabaseTransaction trans)
         Item* item = m_itemUpdateQueue[i];
         if (!item)
             continue;
+#ifdef ACORE_DEBUG
+        LOG_DEBUG("entities.player", "SaveInventory queue entry: player={} queueIndex={} item_ptr={}",
+            lowGuid, i, static_cast<void*>(item));
+#endif
 
         Bag* container = item->GetContainer();
         ObjectGuid::LowType bag_guid = container ? container->GetGUID().GetCounter() : 0;

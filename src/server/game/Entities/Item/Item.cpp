@@ -298,6 +298,8 @@ Item::~Item()
                 "Item::~Item deleted while still queued item_ptr={} entry={} owner={} state={} queueIndex={}",
                 static_cast<void*>(this), GetEntry(), GetOwnerGUID().ToString(), static_cast<int32>(GetState()),
                 std::distance(updateQueue.begin(), existing));
+            *existing = nullptr;
+            uQueuePos = -1;
         }
     }
 #endif

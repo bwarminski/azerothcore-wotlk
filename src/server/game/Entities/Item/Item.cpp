@@ -788,7 +788,7 @@ void Item::SetState(ItemUpdateState state, Player* forplayer)
 #ifdef ACORE_DEBUG
                 std::ostringstream ss;
                 ss << boost::stacktrace::stacktrace();
-                LOG_WARN("entities.player.items",
+                LOG_DEBUG("entities.player.items",
                     "Item::SetState unchanged while still in owner queue item_ptr={} entry={} owner={} state={} queuePos={} existingIndex={} stack:\n{}",
                     static_cast<void*>(this), GetEntry(), GetOwnerGUID().ToString(), static_cast<int32>(uState), uQueuePos,
                     std::distance(updateQueue.begin(), existing), ss.str());
